@@ -31,12 +31,10 @@
     <description>IO to read and write on Elasticsearch 6.x</description>
 
     <properties>
-        <commons-io.version>2.6</commons-io.version>
         <elasticsearch.version>6.2.4</elasticsearch.version>
         <httpcomponents.core.version>4.4.5</httpcomponents.core.version>
         <httpcomponents.httpasyncclient.version>4.1.2</httpcomponents.httpasyncclient.version>
         <httpcomponents.httpclient.version>4.5.2</httpcomponents.httpclient.version>
-        <log4j.version>2.11.0</log4j.version>
     </properties>
 
     <dependencies>
@@ -49,6 +47,18 @@
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.elasticsearch</groupId>
+            <artifactId>elasticsearch</artifactId>
+            <version>${elasticsearch.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.elasticsearch</groupId>
+            <artifactId>elasticsearch-core</artifactId>
+            <version>${elasticsearch.version}</version>
         </dependency>
 
         <dependency>
@@ -104,30 +114,23 @@
         </dependency>
 
         <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <version>${slf4j.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.carrotsearch.randomizedtesting</groupId>
+            <artifactId>randomizedtesting-runner</artifactId>
+            <version>2.5.2</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
             <groupId>org.apache.beam</groupId>
             <artifactId>beam-sdks-java-io-common</artifactId>
             <scope>test</scope>
             <classifier>tests</classifier>
-        </dependency>
-
-        <dependency>
-            <groupId>org.apache.beam</groupId>
-            <artifactId>beam-runners-direct-java</artifactId>
-            <scope>test</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>org.apache.logging.log4j</groupId>
-            <artifactId>log4j-api</artifactId>
-            <version>${log4j.version}</version>
-            <scope>test</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>org.apache.logging.log4j</groupId>
-            <artifactId>log4j-core</artifactId>
-            <version>${log4j.version}</version>
-            <scope>test</scope>
         </dependency>
 
         <dependency>
@@ -158,13 +161,6 @@
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-jdk14</artifactId>
-            <scope>test</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>commons-io</groupId>
-            <artifactId>commons-io</artifactId>
-            <version>${commons-io.version}</version>
             <scope>test</scope>
         </dependency>
 
