@@ -79,7 +79,6 @@ import org.elasticsearch.client.RestHighLevelClient;
 import org.elasticsearch.common.unit.ByteSizeValue;
 import org.elasticsearch.common.unit.TimeValue;
 import org.elasticsearch.index.query.QueryBuilder;
-import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.search.Scroll;
 import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.SearchHits;
@@ -217,6 +216,7 @@ public class ElasticsearchIO {
 
     public abstract String getIndex();
 
+    @Nullable
     public abstract String getType();
 
     abstract Builder builder();
@@ -245,14 +245,19 @@ public class ElasticsearchIO {
      *
      * @param addresses list of addresses of Elasticsearch nodes
      * @param index the index toward which the requests will be issued
-     * @param type the document type toward which the requests will be issued
+     * @param type the document type toward which the requests will be issued, best to set to
+     *             "_doc" or null since types are deprecated and will be removed in ES 7.0.0
      * @return the connection configuration object
      */
     public static ConnectionConfiguration create(String[] addresses, String index, String type) {
       checkArgument(addresses != null, "addresses can not be null");
       checkArgument(addresses.length > 0, "addresses can not be empty");
       checkArgument(index != null, "index can not be null");
-      checkArgument(type != null, "type can not be null");
+      // The new default of type is _doc since types are deprecated and will be removed in ES 7.
+      // https://www.elastic.co/guide/en/elasticsearch/reference/current/removal-of-types.html
+      if (type == null) {
+        type = "_doc";
+      }
       ConnectionConfiguration connectionConfiguration =
           new AutoValue_ElasticsearchIO_ConnectionConfiguration.Builder()
               .setAddresses(Arrays.asList(addresses))
@@ -369,8 +374,6 @@ public class ElasticsearchIO {
     abstract ConnectionConfiguration getConnectionConfiguration();
 
     @Nullable
-    abstract String getQuery();
-
     abstract QueryBuilder getQueryBuilder();
 
     abstract String getScrollKeepalive();
@@ -382,8 +385,6 @@ public class ElasticsearchIO {
     @AutoValue.Builder
     abstract static class Builder {
       abstract Builder setConnectionConfiguration(ConnectionConfiguration connectionConfiguration);
-
-      abstract Builder setQuery(String query);
 
       abstract Builder setQueryBuilder(QueryBuilder queryBuilder);
 
@@ -403,14 +404,13 @@ public class ElasticsearchIO {
     /**
      * Provide a query used while reading from Elasticsearch.
      *
-     * @param query the query. See <a
-     *     href="https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl.html">Query
-     *     DSL</a>
+     * @param queryBuilder instance of QueryBuilder. See <a
+     *     href="https://www.elastic.co/guide/en/elasticsearch/client/java-rest/current/java-rest
+     *                     -high-query-builders.html">Building Queries</a>
      */
-    public Read withQuery(String query) {
-      checkArgument(query != null, "query can not be null");
-      checkArgument(!query.isEmpty(), "query can not be empty");
-      return builder().setQuery(query).build();
+    public Read withQueryBuilder(QueryBuilder queryBuilder) {
+      checkArgument(queryBuilder != null, "queryBuilder can not be null");
+      return builder().setQueryBuilder(queryBuilder).build();
     }
 
     /**
@@ -455,7 +455,7 @@ public class ElasticsearchIO {
     @Override
     public void populateDisplayData(DisplayData.Builder builder) {
       super.populateDisplayData(builder);
-      builder.addIfNotNull(DisplayData.item("query", getQuery()));
+      builder.addIfNotNull(DisplayData.item("query", getQueryBuilder().toString()));
       builder.addIfNotNull(DisplayData.item("batchSize", getBatchSize()));
       builder.addIfNotNull(DisplayData.item("scrollKeepalive", getScrollKeepalive()));
       getConnectionConfiguration().populateDisplayData(builder);
@@ -569,6 +569,7 @@ public class ElasticsearchIO {
       return StringUtf8Coder.of();
     }
 
+    // TODO See if we can convert this to the RestHighLevelClient.
     private static JsonNode getStats(ConnectionConfiguration connectionConfiguration,
         boolean shardLevel) throws IOException {
       HashMap<String, String> params = new HashMap<>();
@@ -610,7 +611,6 @@ public class ElasticsearchIO {
 
       SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
       searchSourceBuilder.size(Integer.MAX_VALUE);
-      searchSourceBuilder.query(QueryBuilders.matchAllQuery());
 
       // if there is more than one slice
       if (source.numSlices != null && source.numSlices > 1) {
@@ -711,17 +711,23 @@ public class ElasticsearchIO {
     @Nullable
     abstract ConnectionConfiguration getConnectionConfiguration();
 
-    abstract boolean getAsync();
+    @Nullable
+    abstract Boolean getAsync();
 
+    @Nullable
     abstract BackoffPolicy getBackOffPolicy();
 
-    abstract int getConcurrentRequests();
+    @Nullable
+    abstract Integer getConcurrentRequests();
 
-    abstract long getFlushInterval();
+    @Nullable
+    abstract Long getFlushInterval();
 
-    abstract int getMaxBatchSize();
+    @Nullable
+    abstract Integer getMaxBatchSize();
 
-    abstract long getMaxBatchSizeBytes();
+    @Nullable
+    abstract Long getMaxBatchSizeBytes();
 
     abstract Builder builder();
 
@@ -734,7 +740,7 @@ public class ElasticsearchIO {
        * @param async
        * @return
        */
-      abstract Builder setAsync(boolean async);
+      abstract Builder setAsync(Boolean async);
 
       /**
        *{@link BulkProcessor.Builder#setBackoffPolicy(org.elasticsearch.action.bulk.BackoffPolicy)}.
@@ -748,28 +754,28 @@ public class ElasticsearchIO {
        * @param concurrentRequests
        * @return
        */
-      abstract Builder setConcurrentRequests(int concurrentRequests);
+      abstract Builder setConcurrentRequests(Integer concurrentRequests);
 
       /**
        * {@link BulkProcessor.Builder#setFlushInterval(org.elasticsearch.common.unit.TimeValue)}.
        * @param flushIntervalSeconds
        * @return
        */
-      abstract Builder setFlushInterval(long flushIntervalSeconds);
+      abstract Builder setFlushInterval(Long flushIntervalSeconds);
 
       /**
        * {@link BulkProcessor.Builder#setBulkActions(int)}.
        * @param maxBatchSize
        * @return
        */
-      abstract Builder setMaxBatchSize(int maxBatchSize);
+      abstract Builder setMaxBatchSize(Integer maxBatchSize);
 
       /**
        * {@link BulkProcessor.Builder#setBulkSize(org.elasticsearch.common.unit.ByteSizeValue)}.
        * @param maxBatchSizeBytes
        * @return
        */
-      abstract Builder setMaxBatchSizeBytes(long maxBatchSizeBytes);
+      abstract Builder setMaxBatchSizeBytes(Long maxBatchSizeBytes);
 
       abstract Write build();
     }
@@ -788,7 +794,8 @@ public class ElasticsearchIO {
 
     /**
      * Provide a maximum size in number of documents for the batch see bulk API
-     * (https://www.elastic.co/guide/en/elasticsearch/reference/2.4/docs-bulk.html). Default is 1000
+     * (https://www.elastic.co/guide/en/elasticsearch/reference/current/docs-bulk.html). Default is
+     * 1000
      * docs (like Elasticsearch bulk size advice). See
      * https://www.elastic.co/guide/en/elasticsearch/guide/current/bulk.html Depending on the
      * execution engine, size of bundles may vary, this sets the maximum size. Change this if you
