@@ -46,6 +46,8 @@ import org.apache.http.nio.entity.NStringEntity;
 import org.elasticsearch.action.DocWriteRequest;
 import org.elasticsearch.client.Response;
 import org.elasticsearch.client.RestHighLevelClient;
+import org.elasticsearch.index.query.QueryBuilder;
+import org.elasticsearch.index.query.QueryBuilders;
 import org.hamcrest.CustomMatcher;
 import org.junit.rules.ExpectedException;
 import org.slf4j.Logger;
@@ -135,22 +137,13 @@ class ElasticsearchIOTestCommon implements Serializable {
           restHighLevelClient);
     }
 
-    String query =
-        "{\n"
-            + "  \"query\": {\n"
-            + "  \"match\" : {\n"
-            + "    \"scientist\" : {\n"
-            + "      \"query\" : \"Einstein\"\n"
-            + "    }\n"
-            + "  }\n"
-            + "  }\n"
-            + "}";
+    QueryBuilder queryBuilder = QueryBuilders.matchQuery("Einstein", "scientist");
 
     PCollection<String> output =
         pipeline.apply(
             ElasticsearchIO.read()
                 .withConnectionConfiguration(connectionConfiguration)
-                .withQuery(query));
+                .withQueryBuilder(queryBuilder));
     PAssert.thatSingleton(output.apply("Count", Count.<String>globally()))
         .isEqualTo(numDocs / NUM_SCIENTISTS);
     pipeline.run();
