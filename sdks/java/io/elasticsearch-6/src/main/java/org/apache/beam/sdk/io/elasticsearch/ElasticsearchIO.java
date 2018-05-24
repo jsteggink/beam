@@ -61,7 +61,6 @@ import org.apache.http.impl.client.BasicCredentialsProvider;
 import org.apache.http.nio.conn.ssl.SSLIOSessionStrategy;
 import org.apache.http.ssl.SSLContexts;
 import org.elasticsearch.action.DocWriteRequest;
-import org.elasticsearch.action.bulk.BackoffPolicy;
 import org.elasticsearch.action.bulk.BulkProcessor;
 import org.elasticsearch.action.bulk.BulkRequest;
 import org.elasticsearch.action.bulk.BulkResponse;
@@ -149,6 +148,10 @@ public class ElasticsearchIO {
   public static Write write() {
     // TODO Why are we setting defaults instead of using ES defaults.
     return new AutoValue_ElasticsearchIO_Write.Builder()
+        // default asynchronous requests
+        .setAsync(false)
+        // default ES value
+        //.setBackOffPolicy(BackoffPolicy.exponentialBackoff())
         // advised default starting batch size in ES docs
         .setMaxBatchSize(1000)
         // advised default starting batch size bytes in ES docs
@@ -455,7 +458,9 @@ public class ElasticsearchIO {
     @Override
     public void populateDisplayData(DisplayData.Builder builder) {
       super.populateDisplayData(builder);
-      builder.addIfNotNull(DisplayData.item("query", getQueryBuilder().toString()));
+      if (null != getQueryBuilder()) {
+        builder.addIfNotNull(DisplayData.item("query", getQueryBuilder().toString()));
+      }
       builder.addIfNotNull(DisplayData.item("batchSize", getBatchSize()));
       builder.addIfNotNull(DisplayData.item("scrollKeepalive", getScrollKeepalive()));
       getConnectionConfiguration().populateDisplayData(builder);
@@ -576,6 +581,7 @@ public class ElasticsearchIO {
       if (shardLevel) {
         params.put("level", "shards");
       }
+      RestHighLevelClient client = connectionConfiguration.createClient();
       String endpoint = String.format("/%s/_stats", connectionConfiguration.getIndex());
       try (RestClient restClient = connectionConfiguration.createClient().getLowLevelClient()) {
 
@@ -714,8 +720,8 @@ public class ElasticsearchIO {
     @Nullable
     abstract Boolean getAsync();
 
-    @Nullable
-    abstract BackoffPolicy getBackOffPolicy();
+    //@Nullable
+    //abstract BackoffPolicy getBackOffPolicy();
 
     @Nullable
     abstract Integer getConcurrentRequests();
@@ -747,7 +753,8 @@ public class ElasticsearchIO {
        * @param backOffPolicy
        * @return
        */
-      abstract Builder setBackOffPolicy(BackoffPolicy backOffPolicy);
+      // TODO The BackOffPolicy can't be serialized, so we have to make something custom.
+      //abstract Builder setBackOffPolicy(BackoffPolicy backOffPolicy);
 
       /**
        * {@link BulkProcessor.Builder#setConcurrentRequests(int)}.
@@ -899,9 +906,10 @@ public class ElasticsearchIO {
               setFlushInterval(TimeValue.timeValueSeconds(spec.getFlushInterval()));
         }
 
-        if (null != spec.getBackOffPolicy()) {
+        // TODO The BackOffPolicy can't be serialized, so we have to make something custom.
+        /*if (null != spec.getBackOffPolicy()) {
           bulkProcessorBuilder.setBackoffPolicy(spec.getBackOffPolicy());
-        }
+        }*/
 
         bulkProcessor = bulkProcessorBuilder.build();
       }
@@ -914,10 +922,7 @@ public class ElasticsearchIO {
 
       @ProcessElement
       public void processElement(ProcessContext context) throws Exception {
-
-        DocWriteRequest bulkRequest = context.element();
-
-        bulkProcessor.add(bulkRequest);
+        bulkProcessor.add(context.element());
       }
 
       @FinishBundle
