@@ -70,7 +70,6 @@ import org.elasticsearch.action.search.ClearScrollResponse;
 import org.elasticsearch.action.search.SearchRequest;
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.action.search.SearchScrollRequest;
-import org.elasticsearch.client.Client;
 import org.elasticsearch.client.Response;
 import org.elasticsearch.client.RestClient;
 import org.elasticsearch.client.RestClientBuilder;
@@ -148,8 +147,6 @@ public class ElasticsearchIO {
   public static Write write() {
     // TODO Why are we setting defaults instead of using ES defaults.
     return new AutoValue_ElasticsearchIO_Write.Builder()
-        // default asynchronous requests
-        .setAsync(false)
         // default ES value
         //.setBackOffPolicy(BackoffPolicy.exponentialBackoff())
         // advised default starting batch size in ES docs
@@ -717,9 +714,6 @@ public class ElasticsearchIO {
     @Nullable
     abstract ConnectionConfiguration getConnectionConfiguration();
 
-    @Nullable
-    abstract Boolean getAsync();
-
     //@Nullable
     //abstract BackoffPolicy getBackOffPolicy();
 
@@ -740,13 +734,6 @@ public class ElasticsearchIO {
     @AutoValue.Builder
     abstract static class Builder {
       abstract Builder setConnectionConfiguration(ConnectionConfiguration connectionConfiguration);
-
-      /**
-       * Make bulk requests async.
-       * @param async
-       * @return
-       */
-      abstract Builder setAsync(Boolean async);
 
       /**
        *{@link BulkProcessor.Builder#setBackoffPolicy(org.elasticsearch.action.bulk.BackoffPolicy)}.
@@ -834,6 +821,8 @@ public class ElasticsearchIO {
       return builder().setMaxBatchSizeBytes(batchSizeBytes).build();
     }
 
+    // TODO Add other options.
+
     @Override
     public PDone expand(PCollection<DocWriteRequest> input) {
       ConnectionConfiguration connectionConfiguration = getConnectionConfiguration();
@@ -887,15 +876,9 @@ public class ElasticsearchIO {
           }
         };
 
-        BulkProcessor.Builder bulkProcessorBuilder = null;
-        if (spec.getAsync()) {
-          bulkProcessorBuilder = BulkProcessor.builder(
+        BulkProcessor.Builder bulkProcessorBuilder = BulkProcessor.builder(
               restHighLevelClient::bulkAsync, bulkProcessorListener
-              );
-        } else {
-          bulkProcessorBuilder = BulkProcessor.builder(
-              (Client) restHighLevelClient, bulkProcessorListener);
-        }
+          );
 
         bulkProcessorBuilder.setBulkActions(spec.getMaxBatchSize())
             .setBulkSize(new ByteSizeValue(spec.getMaxBatchSizeBytes()))
