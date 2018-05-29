@@ -910,8 +910,7 @@ public class ElasticsearchIO {
 
       @FinishBundle
       public void finishBundle(FinishBundleContext context) throws Exception {
-        //TODO Should we close something here?
-        //bulkProcessor.flush();
+        bulkProcessor.flush();
       }
 
       @Teardown
