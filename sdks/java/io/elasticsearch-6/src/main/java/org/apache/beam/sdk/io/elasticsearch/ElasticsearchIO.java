@@ -884,7 +884,7 @@ public class ElasticsearchIO {
             .setBulkSize(new ByteSizeValue(spec.getMaxBatchSizeBytes()))
             .setConcurrentRequests(spec.getConcurrentRequests());
 
-        if (0 != spec.getFlushInterval()) {
+        if (null != spec.getFlushInterval()) {
           bulkProcessorBuilder.
               setFlushInterval(TimeValue.timeValueSeconds(spec.getFlushInterval()));
         }
