@@ -31,6 +31,7 @@ import datetime
 
 import tornado.gen
 import tornado.httpclient
+import tornado.httputil
 import tornado.ioloop
 import tornado.options
 
@@ -38,7 +39,7 @@ async_http_client = tornado.httpclient.AsyncHTTPClient()
 id_counter = 0
 upload_data_count = 0
 _dict_data = None
-
+headers = tornado.httputil.HTTPHeaders({"content-type": "application/json"})
 
 
 def delete_index(idx_name):
@@ -66,7 +67,7 @@ def create_index(idx_name):
     url = "%s/%s" % (tornado.options.options.es_url, idx_name)
     try:
         logging.info('Trying to create index %s' % (url))
-        request = tornado.httpclient.HTTPRequest(url, method="PUT", body=body, request_timeout=240,
+        request = tornado.httpclient.HTTPRequest(url, method="PUT", headers=headers, body=body, request_timeout=240,
                                                  auth_username=tornado.options.options.username, 
                                                  auth_password=tornado.options.options.password)
         response = tornado.httpclient.HTTPClient().fetch(request)
@@ -80,7 +81,7 @@ def create_index(idx_name):
 def upload_batch(upload_data_txt):
     try:
         request = tornado.httpclient.HTTPRequest(tornado.options.options.es_url + "/_bulk",
-                                                 method="POST", body=upload_data_txt,
+                                                 method="POST", headers=headers, body=upload_data_txt,
                                                  request_timeout=
                                                  tornado.options.options.http_upload_timeout,
                                                  auth_username=tornado.options.options.username, 
@@ -180,7 +181,7 @@ def set_index_refresh(val):
     body = json.dumps(params)
     url = "%s/%s/_settings" % (tornado.options.options.es_url, tornado.options.options.index_name)
     try:
-        request = tornado.httpclient.HTTPRequest(url, method="PUT", body=body, request_timeout=240,
+        request = tornado.httpclient.HTTPRequest(url, method="PUT", headers=headers, body=body, request_timeout=240,
                                                  auth_username=tornado.options.options.username, 
                                                  auth_password=tornado.options.options.password)
         http_client = tornado.httpclient.HTTPClient()
@@ -265,7 +266,7 @@ def generate_test_data():
 
 
 if __name__ == '__main__':
-    tornado.options.define("es_url", type=str, default='http://localhost:9200/', 
+    tornado.options.define("es_url", type=str, default='http://localhost:9200', 
                            help="URL of your Elasticsearch node")
     tornado.options.define("index_name", type=str, default='test_data', 
                            help="Name of the index to store your messages")
