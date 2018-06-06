@@ -38,6 +38,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.NoSuchElementException;
+import java.util.concurrent.TimeUnit;
 import javax.annotation.Nullable;
 import javax.net.ssl.SSLContext;
 import org.apache.beam.sdk.annotations.Experimental;
@@ -61,6 +62,7 @@ import org.apache.http.impl.client.BasicCredentialsProvider;
 import org.apache.http.nio.conn.ssl.SSLIOSessionStrategy;
 import org.apache.http.ssl.SSLContexts;
 import org.elasticsearch.action.DocWriteRequest;
+import org.elasticsearch.action.bulk.BackoffPolicy;
 import org.elasticsearch.action.bulk.BulkProcessor;
 import org.elasticsearch.action.bulk.BulkRequest;
 import org.elasticsearch.action.bulk.BulkResponse;
@@ -670,7 +672,11 @@ public class ElasticsearchIO {
         batch.add(document);
       }
       batchIterator = batch.listIterator();
-      current = batchIterator.next();
+      if (batchIterator.hasNext()) {
+        current = batchIterator.next();
+      } else {
+        return false;
+      }
       return true;
     }
 
@@ -787,6 +793,27 @@ public class ElasticsearchIO {
     }
 
     /**
+     * Provide the number of concurrent requests for the BulkProcessor.
+     *
+     * @param concurrentRequests number of concurrent requests for the BulkProcessor.
+     * @return the {@link Write} with concurrent requests set.
+     */
+    public Write withConcurrentRequests(Integer concurrentRequests) {
+      return builder().setConcurrentRequests(concurrentRequests).build();
+    }
+
+    /**
+     * Provide a flush interval flushing *any* bulk actions pending if the interval passes.
+     * Defaults to not set.
+     *
+     * @param flushInterval flush interval in seconds for the BulkProcessor.
+     * @return the {@link Write} with flush interval set.
+     */
+    public Write withFlushInterval(Long flushInterval) {
+      return builder().setFlushInterval(flushInterval).build();
+    }
+
+    /**
      * Provide a maximum size in number of documents for the batch see bulk API
      * (https://www.elastic.co/guide/en/elasticsearch/reference/current/docs-bulk.html). Default is
      * 1000
@@ -795,8 +822,8 @@ public class ElasticsearchIO {
      * execution engine, size of bundles may vary, this sets the maximum size. Change this if you
      * need to have smaller ElasticSearch bulks.
      *
-     * @param batchSize maximum batch size in number of documents
-     * @return the {@link Write} with connection batch size set
+     * @param batchSize maximum batch size in number of documents.
+     * @return the {@link Write} with connection batch size set.
      */
     public Write withMaxBatchSize(int batchSize) {
       checkArgument(batchSize > 0,
@@ -845,6 +872,7 @@ public class ElasticsearchIO {
       private ArrayList<String> batch;
       private long currentBatchSizeBytes;
       private BulkProcessor bulkProcessor;
+      private transient BackoffPolicy backoffPolicy;
 
       @VisibleForTesting
       WriteFn(Write spec) {
@@ -857,7 +885,7 @@ public class ElasticsearchIO {
         backendVersion = getBackendVersion(connectionConfiguration);
         restHighLevelClient = connectionConfiguration.createClient();
 
-        // TODO Have a configurable BulkProcessor
+        // TODO Have a configurable BulkProcessor listener
 
         BulkProcessor.Listener bulkProcessorListener = new BulkProcessor.Listener() {
           @Override
@@ -890,7 +918,8 @@ public class ElasticsearchIO {
         }
 
         // TODO The BackOffPolicy can't be serialized, so we have to make something custom.
-        /*if (null != spec.getBackOffPolicy()) {
+        /*
+        if (null != spec.getBackOffPolicy()) {
           bulkProcessorBuilder.setBackoffPolicy(spec.getBackOffPolicy());
         }*/
 
@@ -915,6 +944,9 @@ public class ElasticsearchIO {
 
       @Teardown
       public void closeClient() throws Exception {
+        if (bulkProcessor != null) {
+          bulkProcessor.close();
+        }
         if (restHighLevelClient != null) {
           restHighLevelClient.close();
         }
