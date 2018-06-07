@@ -38,7 +38,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.NoSuchElementException;
-import java.util.concurrent.TimeUnit;
 import javax.annotation.Nullable;
 import javax.net.ssl.SSLContext;
 import org.apache.beam.sdk.annotations.Experimental;
@@ -149,8 +148,6 @@ public class ElasticsearchIO {
   public static Write write() {
     // TODO Why are we setting defaults instead of using ES defaults.
     return new AutoValue_ElasticsearchIO_Write.Builder()
-        // default ES value
-        //.setBackOffPolicy(BackoffPolicy.exponentialBackoff())
         // advised default starting batch size in ES docs
         .setMaxBatchSize(1000)
         // advised default starting batch size bytes in ES docs
@@ -363,6 +360,151 @@ public class ElasticsearchIO {
       RestHighLevelClient client = new RestHighLevelClient(restClientBuilder);
 
       return client;
+    }
+  }
+
+  /** A POJO describing the BackOffPolicy configuration for the BulkProcessor. */
+  @AutoValue
+  public abstract static class BackOffPolicyConfiguration implements Serializable {
+
+    @Nullable
+    /**
+     * Delay in milliseconds.
+     */
+    public abstract Integer getDelayMillis();
+
+    @Nullable
+    /**
+     * Max number of retries.
+     */
+    public abstract Integer getMaxNumberOfRetries();
+
+    public abstract BackOffPolicyType getBackOffPolicyType();
+
+    /**
+     * BackOffPolicy types.
+     */
+    public enum BackOffPolicyType {
+      /**
+       * Creates a backoff policy that will not allow any backoff, i.e. an operation will fail
+       * after the first attempt.
+       */
+      NO_BACKOFF,
+      /**
+       * Creates an new constant backoff policy with the provided configuration.
+       */
+      CONSTANT,
+      /**
+       * Creates an new exponential backoff policy with the provided configuration.
+       * The default is 50ms delay and 8 max retries.
+       */
+      EXPONENTIAL;
+    }
+
+    abstract Builder builder();
+
+    @AutoValue.Builder
+    abstract static class Builder {
+
+      /**
+       * Set the type of backoff policy.
+       * @param backOffPolicyType
+       * @return
+       */
+      abstract Builder setBackOffPolicyType(BackOffPolicyType backOffPolicyType);
+
+      /**
+       * Set the delay between retries or initial delay of the backoff, depending on the type.
+       * @param delayMillis delay in milliseconds
+       * @return
+       */
+      abstract Builder setDelayMillis(Integer delayMillis);
+
+      /**
+       * Maximum number of retries for the backoff.
+       * @param maxNumberOfRetries
+       * @return
+       */
+      abstract Builder setMaxNumberOfRetries(Integer maxNumberOfRetries);
+
+      abstract BackOffPolicyConfiguration build();
+    }
+
+    /**
+     * Creates a new BackOffPolicy configuration for the BulkProcessor.
+     *
+     * @param backOffPolicyType type of backoff policy
+     * @param delayMillis delayMillis in milliseconds for either the exponential or constant
+     *                    backoff, can be null
+     * @param maxNumberOfRetries max number of retries for either the exponential or constant
+     *                           backoff, can be null
+     * @return Returns a BackOffPolicyConfiguration object for the BulkProcessor.
+     */
+    public static BackOffPolicyConfiguration create(BackOffPolicyType backOffPolicyType, Integer
+        delayMillis,
+        Integer maxNumberOfRetries) {
+      checkArgument(backOffPolicyType != null, "backoff policy type can not be null");
+      if (backOffPolicyType.equals(BackOffPolicyType.CONSTANT)) {
+      checkArgument(
+           !(delayMillis == null
+              && maxNumberOfRetries == null),
+          "Both delayMillis and maxNumberOfRetries are null, both should be a positive "
+              + "integer.");
+      }
+      if (backOffPolicyType.equals(BackOffPolicyType.EXPONENTIAL)) {
+        checkArgument(
+            ((delayMillis == null && maxNumberOfRetries == null)
+                || (delayMillis != null && maxNumberOfRetries != null)),
+            "Only one of delayMillis and maxNumberOfRetries has a value other than null. "
+                + "Both delayMillis and "
+                + "maxNumberOfRetries should be null or both should have a positive integer.");
+      }
+      if (delayMillis != null) {
+        checkArgument(delayMillis >= 0, "Delay should be a positve integer.");
+      }
+      if (maxNumberOfRetries != null) {
+        checkArgument(maxNumberOfRetries  >= 0, "MaxNumberOfRetries should be a positve integer.");
+      }
+
+      BackOffPolicyConfiguration backOffPolicyConfiguration =
+          new AutoValue_ElasticsearchIO_BackOffPolicyConfiguration.Builder()
+              .setBackOffPolicyType(backOffPolicyType)
+              .setDelayMillis(delayMillis)
+              .setMaxNumberOfRetries(maxNumberOfRetries)
+              .build();
+      return backOffPolicyConfiguration;
+    }
+
+    /**
+     * Set the BackOffPolicyType to one of the three types.
+     * @param backOffPolicyType
+     */
+    public BackOffPolicyConfiguration withBackOffPolicyType(BackOffPolicyType backOffPolicyType) {
+      checkArgument(backOffPolicyType != null,
+          "backoff policy type cannot be null");
+      return builder().setBackOffPolicyType(backOffPolicyType).build();
+    }
+
+    /**
+     * The delay defines how long to wait between retry attempts. Must not be null.
+     * @param delay Must be &lt;= <code>Integer.MAX_VALUE</code> ms.
+     */
+    public BackOffPolicyConfiguration withDelay(Integer delay) {
+      if (delay != null) {
+        checkArgument(delay >= 0, "Delay should be a positve integer.");
+      }
+      return builder().setDelayMillis(delay).build();
+    }
+
+    /**
+     * The maximum number of retries.
+     * @param maxNumberOfRetries Must be a non-negative number.
+     */
+    public BackOffPolicyConfiguration withMaxNumberOfRetries(Integer maxNumberOfRetries) {
+      if (maxNumberOfRetries != null) {
+        checkArgument(maxNumberOfRetries >= 0, "MaxNumberOfRetries should be a positve integer.");
+      }
+      return builder().setMaxNumberOfRetries(maxNumberOfRetries).build();
     }
   }
 
@@ -720,8 +862,8 @@ public class ElasticsearchIO {
     @Nullable
     abstract ConnectionConfiguration getConnectionConfiguration();
 
-    //@Nullable
-    //abstract BackoffPolicy getBackOffPolicy();
+    @Nullable
+    abstract BackOffPolicyConfiguration getBackOffPolicyConfiguration();
 
     @Nullable
     abstract Integer getConcurrentRequests();
@@ -743,11 +885,11 @@ public class ElasticsearchIO {
 
       /**
        *{@link BulkProcessor.Builder#setBackoffPolicy(org.elasticsearch.action.bulk.BackoffPolicy)}.
-       * @param backOffPolicy
+       * @param backOffPolicyConfiguration
        * @return
        */
-      // TODO The BackOffPolicy can't be serialized, so we have to make something custom.
-      //abstract Builder setBackOffPolicy(BackoffPolicy backOffPolicy);
+      abstract Builder setBackOffPolicyConfiguration(BackOffPolicyConfiguration
+          backOffPolicyConfiguration);
 
       /**
        * {@link BulkProcessor.Builder#setConcurrentRequests(int)}.
@@ -790,6 +932,21 @@ public class ElasticsearchIO {
       checkArgument(connectionConfiguration != null,
           "connectionConfiguration can not be null");
       return builder().setConnectionConfiguration(connectionConfiguration).build();
+    }
+
+    /**
+     * Provide the BackOffPolicyConfiguration for the BulkProcessor.
+     *
+     * @param backOffPolicyConfiguration the BackOffPolicyConfiguration
+     * {@link BackOffPolicyConfiguration} object
+     * @return the {@link Write} with backoff policy configuration set
+     */
+    public Write withBackOffPolicyConfiguration(BackOffPolicyConfiguration
+        backOffPolicyConfiguration) {
+      checkArgument(backOffPolicyConfiguration != null, "backOffPolicyConfiguration cannot be "
+          + "null.");
+
+      return builder().setBackOffPolicyConfiguration(backOffPolicyConfiguration).build();
     }
 
     /**
@@ -872,7 +1029,6 @@ public class ElasticsearchIO {
       private ArrayList<String> batch;
       private long currentBatchSizeBytes;
       private BulkProcessor bulkProcessor;
-      private transient BackoffPolicy backoffPolicy;
 
       @VisibleForTesting
       WriteFn(Write spec) {
@@ -917,11 +1073,31 @@ public class ElasticsearchIO {
               setFlushInterval(TimeValue.timeValueSeconds(spec.getFlushInterval()));
         }
 
-        // TODO The BackOffPolicy can't be serialized, so we have to make something custom.
-        /*
-        if (null != spec.getBackOffPolicy()) {
-          bulkProcessorBuilder.setBackoffPolicy(spec.getBackOffPolicy());
-        }*/
+        if (null != spec.getBackOffPolicyConfiguration()) {
+          Integer delay = spec.getBackOffPolicyConfiguration().getDelayMillis();
+          Integer maxNumberOfRetries = spec.getBackOffPolicyConfiguration().getMaxNumberOfRetries();
+          switch (spec
+              .getBackOffPolicyConfiguration().getBackOffPolicyType()) {
+            case NO_BACKOFF:
+              bulkProcessorBuilder.setBackoffPolicy(BackoffPolicy.noBackoff());
+              break;
+            case CONSTANT:
+              if (delay != null && maxNumberOfRetries != null) {
+                bulkProcessorBuilder.setBackoffPolicy(
+                    BackoffPolicy.constantBackoff(new TimeValue(delay), maxNumberOfRetries));
+              }
+              break;
+            case EXPONENTIAL:
+              if (delay != null && maxNumberOfRetries != null) {
+                bulkProcessorBuilder.setBackoffPolicy(
+                    BackoffPolicy.exponentialBackoff(new TimeValue(delay), maxNumberOfRetries));
+              } else {
+                bulkProcessorBuilder.setBackoffPolicy(BackoffPolicy.exponentialBackoff());
+              }
+              break;
+          }
+
+        }
 
         bulkProcessor = bulkProcessorBuilder.build();
       }
