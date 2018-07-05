@@ -19,6 +19,7 @@
 package org.apache.beam.runners.direct.portable;
 
 import javax.annotation.Nullable;
+import org.apache.beam.runners.core.construction.graph.PipelineNode.PCollectionNode;
 import org.apache.beam.sdk.transforms.PTransform;
 import org.apache.beam.sdk.util.WindowedValue;
 import org.apache.beam.sdk.values.PCollection;
@@ -26,17 +27,15 @@ import org.joda.time.Instant;
 
 /**
  * Part of a {@link PCollection}. Elements are output to a bundle, which will cause them to be
- * executed by {@link PTransform PTransforms} that consume the {@link PCollection} this bundle is
- * a part of at a later point. This is an uncommitted bundle and can have elements added to it.
+ * executed by {@link PTransform PTransforms} that consume the {@link PCollection} this bundle is a
+ * part of at a later point. This is an uncommitted bundle and can have elements added to it.
  *
  * @param <T> the type of elements that can be added to this bundle
  */
 interface UncommittedBundle<T> {
-  /**
-   * Returns the PCollection that the elements of this {@link UncommittedBundle} belong to.
-   */
+  /** Returns the PCollection that the elements of this {@link UncommittedBundle} belong to. */
   @Nullable
-  PCollection<T> getPCollection();
+  PCollectionNode getPCollection();
 
   /**
    * Outputs an element to this bundle.
@@ -50,8 +49,9 @@ interface UncommittedBundle<T> {
    * Commits this {@link UncommittedBundle}, returning an immutable {@link CommittedBundle}
    * containing all of the elements that were added to it. The {@link #add(WindowedValue)} method
    * will throw an {@link IllegalStateException} if called after a call to commit.
+   *
    * @param synchronizedProcessingTime the synchronized processing time at which this bundle was
-   *                                   committed
+   *     committed
    */
   CommittedBundle<T> commit(Instant synchronizedProcessingTime);
 }

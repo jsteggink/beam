@@ -84,8 +84,7 @@ public class SolrIOTest extends SolrCloudTestCase {
 
   @Rule public TestPipeline pipeline = TestPipeline.create();
 
-  @Rule
-  public final transient ExpectedLogs expectedLogs = ExpectedLogs.none(SolrIO.class);
+  @Rule public final transient ExpectedLogs expectedLogs = ExpectedLogs.none(SolrIO.class);
 
   @BeforeClass
   public static void beforeClass() throws Exception {
@@ -291,6 +290,7 @@ public class SolrIOTest extends SolrCloudTestCase {
     thrown.expectMessage("Error writing to Solr");
 
     // entry state of the release tracker to ensure we only unregister newly created objects
+    @SuppressWarnings("unchecked")
     Set<Object> entryState = ImmutableSet.copyOf(ObjectReleaseTracker.OBJECTS.keySet());
 
     SolrIO.Write write =
@@ -332,9 +332,7 @@ public class SolrIOTest extends SolrCloudTestCase {
     fail("Pipeline should not have run to completion");
   }
 
-  /**
-   * Tests predicate performs as documented.
-   */
+  /** Tests predicate performs as documented. */
   @Test
   public void testDefaultRetryPredicate() {
     assertTrue(DEFAULT_RETRY_PREDICATE.test(new IOException("test")));

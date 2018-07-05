@@ -51,19 +51,12 @@ import org.junit.rules.RuleChain;
 import org.junit.rules.TestRule;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
-import org.junit.runners.Suite;
 
 /** Tests for {@link TestPipeline}. */
-@RunWith(Suite.class)
-@Suite.SuiteClasses({
-  TestPipelineTest.TestPipelineCreationTest.class,
-  TestPipelineTest.TestPipelineEnforcementsTest.WithRealPipelineRunner.class,
-  TestPipelineTest.TestPipelineEnforcementsTest.WithCrashingPipelineRunner.class,
-  TestPipelineTest.NewProviderTest.class
-})
 public class TestPipelineTest implements Serializable {
-  private static final ObjectMapper MAPPER = new ObjectMapper().registerModules(
-      ObjectMapper.findModules(ReflectHelpers.findClassLoader()));
+  private static final ObjectMapper MAPPER =
+      new ObjectMapper()
+          .registerModules(ObjectMapper.findModules(ReflectHelpers.findClassLoader()));
 
   /** Tests related to the creation of a {@link TestPipeline}. */
   @RunWith(JUnit4.class)
@@ -90,9 +83,7 @@ public class TestPipelineTest implements Serializable {
     public void testCreationOfPipelineOptions() throws Exception {
       String stringOptions =
           MAPPER.writeValueAsString(
-              new String[] {
-                "--runner=org.apache.beam.sdk.testing.CrashingRunner"
-              });
+              new String[] {"--runner=org.apache.beam.sdk.testing.CrashingRunner"});
       System.getProperties().put("beamTestPipelineOptions", stringOptions);
       PipelineOptions options = TestPipeline.testingPipelineOptions();
       assertEquals(CrashingRunner.class, options.getRunner());
@@ -208,21 +199,21 @@ public class TestPipelineTest implements Serializable {
       @Rule
       public final transient RuleChain chain = RuleChain.outerRule(exception).around(pipeline);
 
-      @Category(ValidatesRunner.class)
+      @Category(NeedsRunner.class)
       @Test
       public void testNormalFlow() throws Exception {
         addTransform(pCollection(pipeline));
         pipeline.run();
       }
 
-      @Category(ValidatesRunner.class)
+      @Category(NeedsRunner.class)
       @Test
       public void testMissingRun() throws Exception {
         exception.expect(TestPipeline.PipelineRunMissingException.class);
         addTransform(pCollection(pipeline));
       }
 
-      @Category(ValidatesRunner.class)
+      @Category(NeedsRunner.class)
       @Test
       public void testMissingRunWithDisabledEnforcement() throws Exception {
         pipeline.enableAbandonedNodeEnforcement(false);
@@ -231,7 +222,7 @@ public class TestPipelineTest implements Serializable {
         // disable abandoned node detection
       }
 
-      @Category(ValidatesRunner.class)
+      @Category(NeedsRunner.class)
       @Test
       public void testMissingRunAutoAdd() throws Exception {
         pipeline.enableAutoRunIfMissing(true);
@@ -240,7 +231,7 @@ public class TestPipelineTest implements Serializable {
         // have the pipeline.run() auto-added
       }
 
-      @Category(ValidatesRunner.class)
+      @Category(NeedsRunner.class)
       @Test
       public void testDanglingPTransformValidatesRunner() throws Exception {
         final PCollection<String> pCollection = pCollection(pipeline);
@@ -266,7 +257,7 @@ public class TestPipelineTest implements Serializable {
         addTransform(pCollection);
       }
 
-      @Category(ValidatesRunner.class)
+      @Category(NeedsRunner.class)
       @Test
       public void testDanglingPAssertValidatesRunner() throws Exception {
         final PCollection<String> pCollection = pCollection(pipeline);
@@ -283,7 +274,7 @@ public class TestPipelineTest implements Serializable {
        * Tests that a {@link TestPipeline} rule behaves as expected when there is no pipeline usage
        * within a test that has a {@link ValidatesRunner} annotation.
        */
-      @Category(ValidatesRunner.class)
+      @Category(NeedsRunner.class)
       @Test
       public void testNoTestPipelineUsedValidatesRunner() {}
 
@@ -332,7 +323,7 @@ public class TestPipelineTest implements Serializable {
     @Rule public transient TestPipeline pipeline = TestPipeline.create();
 
     @Test
-    @Category(ValidatesRunner.class)
+    @Category(NeedsRunner.class)
     public void testNewProvider() {
       ValueProvider<String> foo = pipeline.newProvider("foo");
       ValueProvider<String> foobar =

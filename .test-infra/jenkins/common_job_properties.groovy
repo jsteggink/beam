@@ -24,7 +24,7 @@ class common_job_properties {
 
   static String checkoutDir = 'src'
 
-  static void setSCM(def context, String repositoryName) {
+  static void setSCM(def context, String repositoryName, boolean allowRemotePoll = true) {
     context.scm {
       git {
         remote {
@@ -39,6 +39,9 @@ class common_job_properties {
         extensions {
           cleanAfterCheckout()
           relativeTargetDirectory(checkoutDir)
+          if (!allowRemotePoll) {
+            disableRemotePoll()
+          }
         }
       }
     }
@@ -46,26 +49,26 @@ class common_job_properties {
 
   // Sets common top-level job properties for website repository jobs.
   static void setTopLevelWebsiteJobProperties(def context,
-                                              String branch = 'asf-site') {
+                                              String branch = 'asf-site',
+                                              int timeout = 100) {
     setTopLevelJobProperties(
             context,
             'beam-site',
             branch,
-            'beam',
-            30)
+            timeout)
   }
 
   // Sets common top-level job properties for main repository jobs.
   static void setTopLevelMainJobProperties(def context,
                                            String branch = 'master',
                                            int timeout = 100,
-                                           String jenkinsExecutorLabel = 'beam') {
+                                           boolean allowRemotePoll = true) {
     setTopLevelJobProperties(
             context,
             'beam',
             branch,
-            jenkinsExecutorLabel,
-            timeout)
+            timeout,
+            allowRemotePoll)
   }
 
   // Sets common top-level job properties. Accessed through one of the above
@@ -73,8 +76,9 @@ class common_job_properties {
   private static void setTopLevelJobProperties(def context,
                                                String repositoryName,
                                                String defaultBranch,
-                                               String jenkinsExecutorLabel,
-                                               int defaultTimeout) {
+                                               int defaultTimeout,
+                                               boolean allowRemotePoll = true) {
+    def jenkinsExecutorLabel = 'beam'
 
     // GitHub project.
     context.properties {
@@ -89,11 +93,11 @@ class common_job_properties {
 
     // Discard old builds. Build records are only kept up to this number of days.
     context.logRotator {
-      daysToKeep(14)
+      daysToKeep(30)
     }
 
     // Source code management.
-    setSCM(context, repositoryName)
+    setSCM(context, repositoryName, allowRemotePoll)
 
     context.parameters {
       // This is a recommended setup if you want to run the job manually. The
@@ -117,17 +121,18 @@ class common_job_properties {
       }
       credentialsBinding {
         string("COVERALLS_REPO_TOKEN", "beam-coveralls-token")
+        string("SLACK_WEBHOOK_URL", "beam-slack-webhook-url")
       }
     }
   }
 
   // Sets the pull request build trigger. Accessed through precommit methods
   // below to insulate callers from internal parameter defaults.
-  private static void setPullRequestBuildTrigger(context,
-                                                 String commitStatusContext,
-                                                 String prTriggerPhrase = '',
-                                                 boolean onlyTriggerPhraseToggle = true,
-                                                 String successComment = '--none--') {
+  static void setPullRequestBuildTrigger(context,
+                                         String commitStatusContext,
+                                         String prTriggerPhrase = '',
+                                         boolean onlyTriggerPhraseToggle = true,
+                                         List<String> triggerPathPatterns = []) {
     context.triggers {
       githubPullRequest {
         admins(['asfbot'])
@@ -146,17 +151,20 @@ class common_job_properties {
         if (onlyTriggerPhraseToggle) {
           onlyTriggerPhrase()
         }
+        if (!triggerPathPatterns.isEmpty()) {
+          includedRegions(triggerPathPatterns.join('\n'))
+        }
 
         extensions {
           commitStatus {
             // This is the name that will show up in the GitHub pull request UI
             // for this Jenkins project. It has a limit of 255 characters.
-            delegate.context(("Jenkins: " + commitStatusContext).take(255))
+            delegate.context commitStatusContext.take(255)
           }
 
           // Comment messages after build completes.
           buildStatus {
-            completedStatus('SUCCESS', successComment)
+            completedStatus('SUCCESS', '--none--')
             completedStatus('FAILURE', '--none--')
             completedStatus('ERROR', '--none--')
           }
@@ -165,30 +173,39 @@ class common_job_properties {
     }
   }
 
-  static String[] gradle_switches = [
-    // Gradle log verbosity enough to diagnose basic build issues
-    "--info",
-    // Continue the build even if there is a failure to show as many potential failures as possible.
-    '--continue',
-    // Limit background number of workers to prevent exhausting machine memory.
-    // Jenkins machines have 15GB memory, and run 2 jobs in parallel; workers are configured with
-    // JVM max heap size 3.5GB. So 2 jobs * 2 workers * 3.5GB heap = 14GB
-    '--max-workers=2',
-  ]
+  static void setGradleSwitches(context, maxWorkers = Runtime.getRuntime().availableProcessors()) {
+    def defaultSwitches = [
+      // Gradle log verbosity enough to diagnose basic build issues
+      "--info",
+      // Continue the build even if there is a failure to show as many potential failures as possible.
+      '--continue',
+    ]
 
-  static void setGradleSwitches(context) {
-    for (String gradle_switch : gradle_switches) {
+    for (String gradle_switch : defaultSwitches) {
       context.switches(gradle_switch)
     }
+    context.switches("--max-workers=${maxWorkers}")
+
+    // Ensure that parallel workers don't exceed total available memory.
+
+    // TODO(BEAM-4230): OperatingSystemMXBeam incorrectly reports total memory; hard-code for now
+    // Jenkins machines are GCE n1-highmem-16, with 104 GB of memory
+    // def os = (com.sun.management.OperatingSystemMXBean)java.lang.management.ManagementFactory.getOperatingSystemMXBean()
+    // def totalMemoryMb = os.getTotalPhysicalMemorySize() / (1024*1024)
+    def totalMemoryMb = 104 * 1024
+    // Jenkins uses 2 executors to schedule concurrent jobs, so ensure that each executor uses only half the
+    // machine memory.
+    def totalExecutorMemoryMb = totalMemoryMb / 2
+    def perWorkerMemoryMb = totalExecutorMemoryMb / maxWorkers
+    context.switches("-Dorg.gradle.jvmargs=-Xmx${(int)perWorkerMemoryMb}m")
   }
 
   // Sets common config for PreCommit jobs.
   static void setPreCommit(context,
                            String commitStatusName,
-                           String prTriggerPhrase = '',
-                           String successComment = '--none--') {
+                           String prTriggerPhrase = '') {
     // Set pull request build trigger.
-    setPullRequestBuildTrigger(context, commitStatusName, prTriggerPhrase, false, successComment)
+    setPullRequestBuildTrigger(context, commitStatusName, prTriggerPhrase, false)
   }
 
   // Enable triggering postcommit runs against pull requests. Users can comment the trigger phrase
@@ -201,8 +218,7 @@ class common_job_properties {
       context,
       commitStatusName,
       prTriggerPhrase,
-      true,
-      '--none--')
+      true)
   }
 
   // Sets this as a cron job, running on a schedule.
@@ -212,24 +228,23 @@ class common_job_properties {
     }
   }
 
-  // Sets common config for PostCommit jobs.
-  static void setPostCommit(context,
-                            String buildSchedule = '0 */6 * * *',
-                            boolean triggerEveryPush = true,
-                            String notifyAddress = 'commits@beam.apache.org',
-                            boolean emailIndividuals = true) {
+  // Sets common config for jobs which run on a schedule; optionally on push
+  static void setAutoJob(context,
+                         String buildSchedule = '0 */6 * * *',
+                         notifyAddress = 'commits@beam.apache.org') {
+
     // Set build triggers
     context.triggers {
       // By default runs every 6 hours.
       cron(buildSchedule)
-      if (triggerEveryPush) {
-        githubPush()
-      }
     }
 
     context.publishers {
       // Notify an email address for each failed build (defaults to commits@).
-      mailer(notifyAddress, false, emailIndividuals)
+      mailer(
+          notifyAddress,
+          /* _do_ notify every unstable build */ false,
+          /* do not email individuals */ false)
     }
   }
 
@@ -248,9 +263,12 @@ class common_job_properties {
     LinkedHashMap<String, String> standardArgs = [
       project: 'apache-beam-testing',
       dpb_log_level: 'INFO',
-      maven_binary: '/home/jenkins/tools/maven/latest/bin/mvn',
       bigquery_table: 'beam_performance.pkb_results',
+      k8s_get_retry_count: 36, // wait up to 6 minutes for K8s LoadBalancer
+      k8s_get_wait_interval: 10,
       temp_dir: '$WORKSPACE',
+      // Use source cloned by Jenkins and not clone it second time (redundantly).
+      beam_location: '$WORKSPACE/src',
       // Publishes results with official tag, for use in dashboards.
       official: 'true'
     ]
@@ -276,8 +294,10 @@ class common_job_properties {
     }
   }
 
-  static String getKubernetesNamespace(def testName) {
-    return "${testName}-${new Date().getTime()}"
+  // Namespace must contain lower case alphanumeric characters or '-'
+  static String getKubernetesNamespace(def jobName) {
+    jobName = jobName.replaceAll("_", "-").toLowerCase()
+    return "${jobName}-\${BUILD_ID}"
   }
 
   static String getKubeconfigLocationForNamespace(def namespace) {

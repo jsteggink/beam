@@ -17,68 +17,63 @@
  */
 package org.apache.beam.runners.direct.portable;
 
-import com.google.common.collect.Iterables;
-import org.apache.beam.sdk.runners.AppliedPTransform;
+import static com.google.common.collect.Iterables.getOnlyElement;
+
+import org.apache.beam.runners.core.construction.graph.PipelineNode.PCollectionNode;
+import org.apache.beam.runners.core.construction.graph.PipelineNode.PTransformNode;
+import org.apache.beam.runners.direct.ExecutableGraph;
 import org.apache.beam.sdk.transforms.Flatten;
-import org.apache.beam.sdk.transforms.Flatten.PCollections;
 import org.apache.beam.sdk.transforms.PTransform;
 import org.apache.beam.sdk.util.WindowedValue;
-import org.apache.beam.sdk.values.PCollection;
-import org.apache.beam.sdk.values.PCollectionList;
 
 /**
- * The {@link DirectRunner} {@link TransformEvaluatorFactory} for the {@link Flatten}
- * {@link PTransform}.
+ * The {@link DirectRunner} {@link TransformEvaluatorFactory} for the {@link Flatten} {@link
+ * PTransform}.
  */
 class FlattenEvaluatorFactory implements TransformEvaluatorFactory {
-  private final EvaluationContext evaluationContext;
+  private final BundleFactory bundleFactory;
+  private final ExecutableGraph<PTransformNode, PCollectionNode> graph;
 
-  FlattenEvaluatorFactory(EvaluationContext evaluationContext) {
-    this.evaluationContext = evaluationContext;
+  FlattenEvaluatorFactory(
+      ExecutableGraph<PTransformNode, PCollectionNode> graph, BundleFactory bundleFactory) {
+    this.bundleFactory = bundleFactory;
+    this.graph = graph;
   }
 
   @Override
   public <InputT> TransformEvaluator<InputT> forApplication(
-      AppliedPTransform<?, ?, ?> application, CommittedBundle<?> inputBundle) {
+      PTransformNode application, CommittedBundle<?> inputBundle) {
     @SuppressWarnings({"cast", "unchecked", "rawtypes"})
-    TransformEvaluator<InputT> evaluator =
-        (TransformEvaluator<InputT>) createInMemoryEvaluator((AppliedPTransform) application);
+    TransformEvaluator<InputT> evaluator = createInMemoryEvaluator(application);
     return evaluator;
   }
 
   @Override
-  public void cleanup() throws Exception {}
+  public void cleanup() {}
 
   private <InputT> TransformEvaluator<InputT> createInMemoryEvaluator(
-      final AppliedPTransform<
-              PCollectionList<InputT>, PCollection<InputT>, PCollections<InputT>>
-          application) {
-    final UncommittedBundle<InputT> outputBundle =
-        evaluationContext.createBundle(
-            (PCollection<InputT>) Iterables.getOnlyElement(application.getOutputs().values()));
-    final TransformResult<InputT> result =
-        StepTransformResult.<InputT>withoutHold(application).addOutput(outputBundle).build();
-    return new FlattenEvaluator<>(outputBundle, result);
+      final PTransformNode transform) {
+    return new FlattenEvaluator<>(transform);
   }
 
-  private static class FlattenEvaluator<InputT> implements TransformEvaluator<InputT> {
-    private final UncommittedBundle<InputT> outputBundle;
-    private final TransformResult<InputT> result;
+  private class FlattenEvaluator<InputT> implements TransformEvaluator<InputT> {
+    private final PTransformNode transform;
+    private final UncommittedBundle<InputT> bundle;
 
-    public FlattenEvaluator(
-        UncommittedBundle<InputT> outputBundle, TransformResult<InputT> result) {
-      this.outputBundle = outputBundle;
-      this.result = result;
+    FlattenEvaluator(PTransformNode transform) {
+      this.transform = transform;
+      PCollectionNode output = getOnlyElement(graph.getProduced(transform));
+      bundle = bundleFactory.createBundle(output);
     }
 
     @Override
     public void processElement(WindowedValue<InputT> element) {
-      outputBundle.add(element);
+      bundle.add(element);
     }
 
     @Override
     public TransformResult<InputT> finishBundle() {
-      return result;
+      return StepTransformResult.<InputT>withoutHold(transform).addOutput(bundle).build();
     }
   }
 }

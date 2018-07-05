@@ -27,14 +27,12 @@ import com.google.common.util.concurrent.MoreExecutors;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import java.io.IOException;
 import java.io.Serializable;
-import java.net.MalformedURLException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
-import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -205,7 +203,7 @@ public class SolrIO {
       return HttpClientUtil.createClient(params);
     }
 
-    AuthorizedSolrClient<CloudSolrClient> createClient() throws MalformedURLException {
+    AuthorizedSolrClient<CloudSolrClient> createClient() {
       CloudSolrClient solrClient = new CloudSolrClient(getZkHost(), createHttpClient());
       return new AuthorizedSolrClient<>(solrClient, this);
     }
@@ -261,8 +259,8 @@ public class SolrIO {
     public static RetryConfiguration create(int maxAttempts, Duration maxDuration) {
       checkArgument(maxAttempts > 0, "maxAttempts must be greater than 0");
       checkArgument(
-              maxDuration != null && maxDuration.isLongerThan(Duration.ZERO),
-              "maxDuration must be greater than 0");
+          maxDuration != null && maxDuration.isLongerThan(Duration.ZERO),
+          "maxDuration must be greater than 0");
       return new AutoValue_SolrIO_RetryConfiguration.Builder()
           .setMaxAttempts(maxAttempts)
           .setMaxDuration(maxDuration)
@@ -279,15 +277,15 @@ public class SolrIO {
 
     /**
      * An interface used to control if we retry the Solr call when a {@link Throwable} occurs. If
-     * {@link RetryPredicate#test(Object)} returns true, {@link Write} tries to resend the
-     * requests to the Solr server if the {@link RetryConfiguration} permits it.
+     * {@link RetryPredicate#test(Object)} returns true, {@link Write} tries to resend the requests
+     * to the Solr server if the {@link RetryConfiguration} permits it.
      */
     @FunctionalInterface
     interface RetryPredicate extends Predicate<Throwable>, Serializable {}
 
     /** This is the default predicate used to test if a failed Solr operation should be retried. */
     private static class DefaultRetryPredicate implements RetryPredicate {
-      private static final Set<Integer> ELIGIBLE_CODES =
+      private static final ImmutableSet<Integer> ELIGIBLE_CODES =
           ImmutableSet.of(
               SolrException.ErrorCode.CONFLICT.code,
               SolrException.ErrorCode.SERVER_ERROR.code,
@@ -487,6 +485,7 @@ public class SolrIO {
           throw new IOException("Can not get core status from " + replica, e);
         }
         NamedList<Object> coreStatus = response.getCoreStatus(replica.coreName());
+        @SuppressWarnings("unchecked")
         NamedList<Object> indexStats = (NamedList<Object>) coreStatus.get("index");
         return (long) indexStats.get("sizeInBytes");
       }
@@ -550,7 +549,7 @@ public class SolrIO {
     }
 
     @Override
-    public BoundedReader<SolrDocument> createReader(PipelineOptions options) throws IOException {
+    public BoundedReader<SolrDocument> createReader(PipelineOptions options) {
       return new BoundedSolrReader(this);
     }
 
@@ -670,7 +669,6 @@ public class SolrIO {
       return source;
     }
   }
-
 
   /** A {@link PTransform} writing data to Solr. */
   @AutoValue
@@ -805,7 +803,7 @@ public class SolrIO {
       }
 
       @StartBundle
-      public void startBundle(StartBundleContext context) throws Exception {
+      public void startBundle(StartBundleContext context) {
         batch = new ArrayList<>();
       }
 
@@ -846,7 +844,7 @@ public class SolrIO {
               if (spec.getRetryConfiguration() == null
                   || !spec.getRetryConfiguration().getRetryPredicate().test(exception)) {
                 throw new IOException(
-                        "Error writing to Solr (no attempt made to retry)", exception);
+                    "Error writing to Solr (no attempt made to retry)", exception);
               }
 
               // see if we can pause and try again

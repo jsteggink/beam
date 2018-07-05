@@ -18,7 +18,7 @@
 
 import groovy.json.JsonOutput
 
-apply from: project(":").file("build_rules.gradle")
+apply plugin: org.apache.beam.gradle.BeamModulePlugin
 applyJavaNature()
 
 description = "Apache Beam :: Runners :: Gearpump"
@@ -47,14 +47,15 @@ dependencies {
   shadow "org.apache.gearpump:gearpump-streaming_2.11:$gearpump_version"
   shadow library.java.joda_time
   shadow library.java.jackson_annotations
-  shadow library.java.findbugs_jsr305
   shadowTest project(path: ":beam-sdks-java-core", configuration: "shadowTest")
   shadowTest library.java.junit
   shadowTest library.java.hamcrest_core
+  shadowTest library.java.hamcrest_library
   shadowTest library.java.jackson_databind
   shadowTest library.java.jackson_dataformat_yaml
   shadowTest library.java.mockito_core
   validatesRunner project(path: ":beam-sdks-java-core", configuration: "shadowTest")
+  validatesRunner project(path: ":beam-runners-core-java", configuration: "shadowTest")
   validatesRunner project(path: project.path, configuration: "shadow")
 }
 
@@ -70,6 +71,7 @@ task validatesRunnerStreaming(type: Test) {
   useJUnit {
     includeCategories 'org.apache.beam.sdk.testing.ValidatesRunner'
     excludeCategories 'org.apache.beam.sdk.testing.FlattenWithHeterogeneousCoders'
+    excludeCategories 'org.apache.beam.sdk.testing.UsesSchema'
     excludeCategories 'org.apache.beam.sdk.testing.UsesStatefulParDo'
     excludeCategories 'org.apache.beam.sdk.testing.UsesTimersInParDo'
     excludeCategories 'org.apache.beam.sdk.testing.UsesSplittableParDo'
@@ -78,6 +80,7 @@ task validatesRunnerStreaming(type: Test) {
     excludeCategories 'org.apache.beam.sdk.testing.UsesTestStream'
     excludeCategories 'org.apache.beam.sdk.testing.UsesCustomWindowMerging'
     excludeCategories 'org.apache.beam.sdk.testing.UsesParDoLifecycle'
+    excludeCategories 'org.apache.beam.sdk.testing.UsesImpulse'
   }
 }
 

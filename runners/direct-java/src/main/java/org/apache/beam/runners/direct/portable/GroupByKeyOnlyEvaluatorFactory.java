@@ -17,58 +17,65 @@
  */
 package org.apache.beam.runners.direct.portable;
 
-import static com.google.common.base.Preconditions.checkState;
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.collect.Iterables.getOnlyElement;
 
-import com.google.common.collect.Iterables;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.apache.beam.model.pipeline.v1.RunnerApi.Components;
+import org.apache.beam.model.pipeline.v1.RunnerApi.Components.Builder;
 import org.apache.beam.runners.core.GroupByKeyViaGroupByKeyOnly;
 import org.apache.beam.runners.core.GroupByKeyViaGroupByKeyOnly.GroupByKeyOnly;
 import org.apache.beam.runners.core.KeyedWorkItem;
 import org.apache.beam.runners.core.KeyedWorkItems;
-import org.apache.beam.runners.direct.portable.DirectGroupByKey.DirectGroupByKeyOnly;
-import org.apache.beam.runners.direct.portable.StepTransformResult.Builder;
+import org.apache.beam.runners.core.construction.RehydratedComponents;
+import org.apache.beam.runners.core.construction.graph.PipelineNode.PCollectionNode;
+import org.apache.beam.runners.core.construction.graph.PipelineNode.PTransformNode;
+import org.apache.beam.runners.direct.ExecutableGraph;
+import org.apache.beam.runners.fnexecution.wire.WireCoders;
 import org.apache.beam.runners.local.StructuralKey;
 import org.apache.beam.sdk.coders.Coder;
 import org.apache.beam.sdk.coders.KvCoder;
-import org.apache.beam.sdk.runners.AppliedPTransform;
 import org.apache.beam.sdk.transforms.PTransform;
 import org.apache.beam.sdk.util.WindowedValue;
+import org.apache.beam.sdk.util.WindowedValue.WindowedValueCoder;
 import org.apache.beam.sdk.values.KV;
-import org.apache.beam.sdk.values.PCollection;
 
 /**
- * The {@link DirectRunner} {@link TransformEvaluatorFactory} for the
- * {@link GroupByKeyOnly} {@link PTransform}.
+ * The {@code DirectRunner} {@link TransformEvaluatorFactory} for the {@link GroupByKeyOnly} {@link
+ * PTransform}.
  */
 class GroupByKeyOnlyEvaluatorFactory implements TransformEvaluatorFactory {
-  private final EvaluationContext evaluationContext;
+  private final Components components;
 
-  GroupByKeyOnlyEvaluatorFactory(EvaluationContext evaluationContext) {
-    this.evaluationContext = evaluationContext;
+  private final BundleFactory bundleFactory;
+  private final ExecutableGraph<PTransformNode, PCollectionNode> graph;
+
+  GroupByKeyOnlyEvaluatorFactory(
+      ExecutableGraph<PTransformNode, PCollectionNode> graph,
+      Components components,
+      BundleFactory bundleFactory) {
+    this.components = components;
+    this.bundleFactory = bundleFactory;
+    this.graph = graph;
   }
 
   @Override
   public <InputT> TransformEvaluator<InputT> forApplication(
-      AppliedPTransform<?, ?, ?> application,
-      CommittedBundle<?> inputBundle) {
+      PTransformNode application, CommittedBundle<?> inputBundle) {
     @SuppressWarnings({"cast", "unchecked", "rawtypes"})
-    TransformEvaluator<InputT> evaluator =
-        createEvaluator(
-            (AppliedPTransform) application);
+    TransformEvaluator<InputT> evaluator = (TransformEvaluator) createEvaluator(application);
     return evaluator;
   }
 
   @Override
   public void cleanup() {}
 
-  private <K, V> TransformEvaluator<KV<K, V>> createEvaluator(
-      final AppliedPTransform<
-              PCollection<KV<K, V>>, PCollection<KeyedWorkItem<K, V>>, DirectGroupByKeyOnly<K, V>>
-          application) {
-    return new GroupByKeyOnlyEvaluator<>(evaluationContext, application);
+  private <K, V> TransformEvaluator<KV<K, V>> createEvaluator(final PTransformNode application) {
+    return new GroupByKeyOnlyEvaluator<>(application);
   }
 
   /**
@@ -77,43 +84,49 @@ class GroupByKeyOnlyEvaluatorFactory implements TransformEvaluatorFactory {
    *
    * @see GroupByKeyViaGroupByKeyOnly
    */
-  private static class GroupByKeyOnlyEvaluator<K, V>
-      implements TransformEvaluator<KV<K, V>> {
-    private final EvaluationContext evaluationContext;
-
-    private final AppliedPTransform<
-            PCollection<KV<K, V>>,
-            PCollection<KeyedWorkItem<K, V>>,
-            DirectGroupByKeyOnly<K, V>> application;
+  private class GroupByKeyOnlyEvaluator<K, V> implements TransformEvaluator<KV<K, V>> {
     private final Coder<K> keyCoder;
-    private Map<StructuralKey<K>, List<WindowedValue<V>>> groupingMap;
+    private final Map<StructuralKey<K>, List<WindowedValue<V>>> groupingMap;
 
-    public GroupByKeyOnlyEvaluator(
-        EvaluationContext evaluationContext,
-        AppliedPTransform<
-            PCollection<KV<K, V>>,
-            PCollection<KeyedWorkItem<K, V>>,
-            DirectGroupByKeyOnly<K, V>> application) {
-      this.evaluationContext = evaluationContext;
-      this.application = application;
-      this.keyCoder =
-          getKeyCoder(
-              ((PCollection<KV<K, V>>) Iterables.getOnlyElement(application.getInputs().values()))
-                  .getCoder());
-      this.groupingMap = new HashMap<>();
+    private final PCollectionNode outputPCollection;
+    private final StepTransformResult.Builder<KV<K, V>> resultBuilder;
+
+    private GroupByKeyOnlyEvaluator(PTransformNode application) {
+      keyCoder = getKeyCoder(application);
+      groupingMap = new HashMap<>();
+      outputPCollection = getOnlyElement(graph.getProduced(application));
+      resultBuilder = StepTransformResult.withoutHold(application);
     }
 
-    private Coder<K> getKeyCoder(Coder<KV<K, V>> coder) {
-      checkState(
-          coder instanceof KvCoder,
-          "%s requires a coder of class %s."
-              + " This is an internal error; this is checked during pipeline construction"
-              + " but became corrupted.",
-          getClass().getSimpleName(),
-          KvCoder.class.getSimpleName());
-      @SuppressWarnings("unchecked")
-      Coder<K> keyCoder = ((KvCoder<K, V>) coder).getKeyCoder();
-      return keyCoder;
+    private Coder<K> getKeyCoder(PTransformNode application) {
+      PCollectionNode inputPCollection = getOnlyElement(graph.getPerElementInputs(application));
+      try {
+        // We know the type restrictions on the input PCollection, and the restrictions on the
+        // Wire coder
+        Builder builder = GroupByKeyOnlyEvaluatorFactory.this.components.toBuilder();
+        String wireCoderId = WireCoders.addRunnerWireCoder(inputPCollection, builder);
+        Coder<WindowedValue<KV<K, V>>> wireCoder =
+            (Coder<WindowedValue<KV<K, V>>>)
+                RehydratedComponents.forComponents(builder.build()).getCoder(wireCoderId);
+
+        checkArgument(
+            wireCoder instanceof WindowedValue.WindowedValueCoder,
+            "Wire %s must be a %s",
+            Coder.class.getSimpleName(),
+            WindowedValueCoder.class.getSimpleName());
+        WindowedValueCoder<KV<K, V>> windowedValueCoder = (WindowedValueCoder<KV<K, V>>) wireCoder;
+
+        checkArgument(
+            windowedValueCoder.getValueCoder() instanceof KvCoder,
+            "Input elements to %s must be encoded with a %s",
+            DirectGroupByKey.DirectGroupByKeyOnly.class.getSimpleName(),
+            KvCoder.class.getSimpleName());
+        KvCoder<K, V> kvCoder = (KvCoder<K, V>) windowedValueCoder.getValueCoder();
+
+        return kvCoder.getKeyCoder();
+      } catch (IOException e) {
+        throw new RuntimeException(e);
+      }
     }
 
     @Override
@@ -128,17 +141,13 @@ class GroupByKeyOnlyEvaluatorFactory implements TransformEvaluatorFactory {
 
     @Override
     public TransformResult<KV<K, V>> finishBundle() {
-      Builder resultBuilder = StepTransformResult.withoutHold(application);
       for (Map.Entry<StructuralKey<K>, List<WindowedValue<V>>> groupedEntry :
           groupingMap.entrySet()) {
         K key = groupedEntry.getKey().getKey();
         KeyedWorkItem<K, V> groupedKv =
             KeyedWorkItems.elementsWorkItem(key, groupedEntry.getValue());
         UncommittedBundle<KeyedWorkItem<K, V>> bundle =
-            evaluationContext.createKeyedBundle(
-                StructuralKey.of(key, keyCoder),
-                (PCollection<KeyedWorkItem<K, V>>)
-                    Iterables.getOnlyElement(application.getOutputs().values()));
+            bundleFactory.createKeyedBundle(StructuralKey.of(key, keyCoder), outputPCollection);
         bundle.add(WindowedValue.valueInGlobalWindow(groupedKv));
         resultBuilder.addOutput(bundle);
       }

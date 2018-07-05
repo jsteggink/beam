@@ -30,6 +30,7 @@ import org.apache.beam.model.pipeline.v1.RunnerApi;
 import org.apache.beam.model.pipeline.v1.RunnerApi.Components;
 import org.apache.beam.model.pipeline.v1.RunnerApi.PTransform;
 import org.apache.beam.model.pipeline.v1.RunnerApi.Pipeline;
+import org.apache.beam.runners.core.construction.SyntheticComponents;
 import org.apache.beam.runners.core.construction.graph.PipelineNode.PTransformNode;
 
 /** A {@link Pipeline} which has been separated into collections of executable components. */
@@ -81,10 +82,14 @@ public abstract class FusedPipeline {
                 false)
             .map(PTransformNode::getId)
             .collect(Collectors.toList());
-    return Pipeline.newBuilder()
-        .setComponents(fusedComponents)
-        .addAllRootTransformIds(rootTransformIds)
-        .build();
+    Pipeline res =
+        Pipeline.newBuilder()
+            .setComponents(fusedComponents)
+            .addAllRootTransformIds(rootTransformIds)
+            .build();
+    // Validate that fusion didn't produce a malformed pipeline.
+    PipelineValidator.validate(res);
+    return res;
   }
 
   /**
@@ -105,8 +110,8 @@ public abstract class FusedPipeline {
               stage.getEnvironment().getUrl());
       Set<String> usedNames =
           Sets.union(topLevelTransforms.keySet(), getComponents().getTransformsMap().keySet());
-      topLevelTransforms.put(
-          SyntheticNodes.uniqueId(baseName, usedNames::contains), stage.toPTransform());
+      String uniqueId = SyntheticComponents.uniqueId(baseName, usedNames::contains);
+      topLevelTransforms.put(uniqueId, stage.toPTransform(uniqueId));
     }
     return topLevelTransforms;
   }

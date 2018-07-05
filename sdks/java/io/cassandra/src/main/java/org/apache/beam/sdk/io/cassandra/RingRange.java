@@ -43,16 +43,10 @@ final class RingRange {
    * @return size of the range, max - range, in case of wrap
    */
   BigInteger span(BigInteger ringSize) {
-    if (start.compareTo(end) >= 0) {
-      return end.subtract(start).add(ringSize);
-    } else {
-      return end.subtract(start);
-    }
+    return (start.compareTo(end) >= 0) ? end.subtract(start).add(ringSize) : end.subtract(start);
   }
 
-  /**
-   * @return true if 0 is inside of this range. Note that if start == end, then wrapping is true
-   */
+  /** @return true if 0 is inside of this range. Note that if start == end, then wrapping is true */
   public boolean isWrapping() {
     return start.compareTo(end) >= 0;
   }

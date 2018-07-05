@@ -18,15 +18,13 @@
 
 package org.apache.beam.runners.direct.portable;
 
-import org.apache.beam.sdk.runners.AppliedPTransform;
+import org.apache.beam.runners.core.construction.graph.PipelineNode.PTransformNode;
 
-/**
- * A Factory for creating {@link TransformExecutor Transform Executors} on an input.
- */
+/** A Factory for creating {@link TransformExecutor Transform Executors} on an input. */
 interface TransformExecutorFactory {
   TransformExecutor create(
       CommittedBundle<?> bundle,
-      AppliedPTransform<?, ?, ?> transform,
+      PTransformNode transform,
       CompletionCallback onComplete,
       TransformExecutorService executorService);
 }

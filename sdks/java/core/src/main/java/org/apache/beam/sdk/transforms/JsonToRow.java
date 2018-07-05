@@ -17,9 +17,10 @@
  */
 package org.apache.beam.sdk.transforms;
 
+import static org.apache.beam.sdk.util.JsonToRowUtils.jsonToRow;
+import static org.apache.beam.sdk.util.JsonToRowUtils.newObjectMapperWith;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.module.SimpleModule;
-import java.io.IOException;
 import javax.annotation.Nullable;
 import org.apache.beam.sdk.annotations.Experimental;
 import org.apache.beam.sdk.schemas.Schema;
@@ -31,14 +32,21 @@ import org.apache.beam.sdk.values.Row;
 /**
  * <i>Experimental</i>
  *
- * <p>Creates a {@link PTransform} to convert input JSON objects to {@link Row Rows}
- * with given {@link Schema}.
+ * <p>Creates a {@link PTransform} to convert input JSON objects to {@link Row Rows} with given
+ * {@link Schema}.
  *
- * <p>Currently supported {@link Schema} field types are: <ul> <li>{@link Schema.TypeName#BYTE}</li>
- * <li>{@link Schema.TypeName#INT16}</li> <li>{@link Schema.TypeName#INT32}</li> <li>{@link
- * Schema.TypeName#INT64}</li> <li>{@link Schema.TypeName#FLOAT}</li> <li>{@link
- * Schema.TypeName#DOUBLE}</li> <li>{@link Schema.TypeName#BOOLEAN}</li> <li>{@link
- * Schema.TypeName#STRING}</li> </ul>
+ * <p>Currently supported {@link Schema} field types are:
+ *
+ * <ul>
+ *   <li>{@link Schema.TypeName#BYTE}
+ *   <li>{@link Schema.TypeName#INT16}
+ *   <li>{@link Schema.TypeName#INT32}
+ *   <li>{@link Schema.TypeName#INT64}
+ *   <li>{@link Schema.TypeName#FLOAT}
+ *   <li>{@link Schema.TypeName#DOUBLE}
+ *   <li>{@link Schema.TypeName#BOOLEAN}
+ *   <li>{@link Schema.TypeName#STRING}
+ * </ul>
  *
  * <p>For specifics of JSON deserialization see {@link RowJsonDeserializer}.
  *
@@ -87,18 +95,10 @@ public class JsonToRow {
                   new DoFn<String, Row>() {
                     @ProcessElement
                     public void processElement(ProcessContext context) {
-                      context.output(jsonToRow(context.element()));
+                      context.output(jsonToRow(objectMapper(), context.element()));
                     }
                   }))
           .setCoder(schema.getRowCoder());
-    }
-
-    private Row jsonToRow(String jsonString) {
-      try {
-        return objectMapper().readValue(jsonString, Row.class);
-      } catch (IOException e) {
-        throw new IllegalArgumentException("Unable to parse json object: " + jsonString, e);
-      }
     }
 
     private ObjectMapper objectMapper() {
@@ -111,16 +111,6 @@ public class JsonToRow {
       }
 
       return this.objectMapper;
-    }
-
-    private static ObjectMapper newObjectMapperWith(RowJsonDeserializer deserializer) {
-      SimpleModule module = new SimpleModule("rowDeserializationModule");
-      module.addDeserializer(Row.class, deserializer);
-
-      ObjectMapper objectMapper = new ObjectMapper();
-      objectMapper.registerModule(module);
-
-      return objectMapper;
     }
   }
 }

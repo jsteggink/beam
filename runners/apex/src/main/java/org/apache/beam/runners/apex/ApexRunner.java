@@ -23,6 +23,7 @@ import com.datatorrent.api.DAG;
 import com.datatorrent.api.StreamingApplication;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
+import com.google.common.io.Files;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -69,12 +70,12 @@ import org.apache.beam.sdk.values.PCollectionView;
 import org.apache.beam.sdk.values.PCollectionViews;
 import org.apache.beam.sdk.values.PValue;
 import org.apache.beam.sdk.values.TupleTag;
+import org.apache.commons.io.FileUtils;
 import org.apache.hadoop.conf.Configuration;
 
 /**
- * A {@link PipelineRunner} that translates the
- * pipeline to an Apex DAG and executes it on an Apex cluster.
- *
+ * A {@link PipelineRunner} that translates the pipeline to an Apex DAG and executes it on an Apex
+ * cluster.
  */
 public class ApexRunner extends PipelineRunner<ApexRunnerResult> {
 
@@ -83,9 +84,9 @@ public class ApexRunner extends PipelineRunner<ApexRunnerResult> {
   protected boolean translateOnly = false;
 
   /**
-   * TODO: this isn't thread safe and may cause issues when tests run in parallel
-   * Holds any most resent assertion error that was raised while processing elements.
-   * Used in the unit test driver in embedded mode to propagate the exception.
+   * TODO: this isn't thread safe and may cause issues when tests run in parallel Holds any most
+   * resent assertion error that was raised while processing elements. Used in the unit test driver
+   * in embedded mode to propagate the exception.
    */
   public static final AtomicReference<AssertionError> ASSERTION_ERROR = new AtomicReference<>();
 
@@ -95,7 +96,7 @@ public class ApexRunner extends PipelineRunner<ApexRunnerResult> {
 
   public static ApexRunner fromOptions(PipelineOptions options) {
     ApexPipelineOptions apexPipelineOptions =
-            PipelineOptionsValidator.validate(ApexPipelineOptions.class, options);
+        PipelineOptionsValidator.validate(ApexPipelineOptions.class, options);
     return new ApexRunner(apexPipelineOptions);
   }
 
@@ -128,8 +129,7 @@ public class ApexRunner extends PipelineRunner<ApexRunnerResult> {
                 new StreamingWrapSingletonInList.Factory()))
         .add(
             PTransformOverride.of(
-                PTransformMatchers.splittableParDoMulti(),
-                new SplittableParDoOverrideFactory<>()))
+                PTransformMatchers.splittableParDoMulti(), new SplittableParDoOverrideFactory<>()))
         .add(
             PTransformOverride.of(
                 PTransformMatchers.classEqualTo(SplittableParDo.ProcessKeyedElements.class),
@@ -143,11 +143,18 @@ public class ApexRunner extends PipelineRunner<ApexRunnerResult> {
 
     final ApexPipelineTranslator translator = new ApexPipelineTranslator(options);
     final AtomicReference<DAG> apexDAG = new AtomicReference<>();
+    final AtomicReference<File> tempDir = new AtomicReference<>();
 
     StreamingApplication apexApp =
         (dag, conf) -> {
           apexDAG.set(dag);
           dag.setAttribute(DAGContext.APPLICATION_NAME, options.getApplicationName());
+          if (options.isEmbeddedExecution()) {
+            // set unique path for application state to allow for parallel execution of unit tests
+            // (the embedded cluster would set it to a fixed location under ./target)
+            tempDir.set(Files.createTempDir());
+            dag.setAttribute(DAGContext.APPLICATION_PATH, tempDir.get().toURI().toString());
+          }
           translator.translate(pipeline, dag);
         };
 
@@ -193,7 +200,14 @@ public class ApexRunner extends PipelineRunner<ApexRunnerResult> {
         }
         ApexRunner.ASSERTION_ERROR.set(null);
         AppHandle apexAppResult = launcher.launchApp(apexApp, conf, launchAttributes);
-        return new ApexRunnerResult(apexDAG.get(), apexAppResult);
+        return new ApexRunnerResult(apexDAG.get(), apexAppResult) {
+          @Override
+          protected void cleanupOnCancelOrFinish() {
+            if (tempDir.get() != null) {
+              FileUtils.deleteQuietly(tempDir.get());
+            }
+          }
+        };
       } catch (Exception e) {
         Throwables.throwIfUnchecked(e);
         throw new RuntimeException(e);
@@ -207,11 +221,10 @@ public class ApexRunner extends PipelineRunner<ApexRunnerResult> {
         throw new RuntimeException("Failed to launch the application on YARN.", e);
       }
     }
-
   }
 
-////////////////////////////////////////////
-// Adapted from FlinkRunner for View support
+  ////////////////////////////////////////////
+  // Adapted from FlinkRunner for View support
 
   /**
    * Creates a primitive {@link PCollectionView}.
@@ -258,11 +271,8 @@ public class ApexRunner extends PipelineRunner<ApexRunnerResult> {
     private static final long serialVersionUID = 1L;
     CreatePCollectionView<T, T> transform;
 
-    /**
-     * Builds an instance of this class from the overridden transform.
-     */
-    private StreamingWrapSingletonInList(
-        CreatePCollectionView<T, T> transform) {
+    /** Builds an instance of this class from the overridden transform. */
+    private StreamingWrapSingletonInList(CreatePCollectionView<T, T> transform) {
       this.transform = transform;
     }
 
@@ -281,8 +291,7 @@ public class ApexRunner extends PipelineRunner<ApexRunnerResult> {
 
     static class Factory<T>
         extends SingleInputOutputOverrideFactory<
-            PCollection<T>, PCollection<T>,
-            CreatePCollectionView<T, T>> {
+            PCollection<T>, PCollection<T>, CreatePCollectionView<T, T>> {
       @Override
       public PTransformReplacement<PCollection<T>, PCollection<T>> getReplacementTransform(
           AppliedPTransform<PCollection<T>, PCollection<T>, CreatePCollectionView<T, T>>
@@ -319,12 +328,9 @@ public class ApexRunner extends PipelineRunner<ApexRunnerResult> {
         extends SingleInputOutputOverrideFactory<
             PCollection<T>, PCollection<T>, CreatePCollectionView<T, Iterable<T>>> {
       @Override
-      public PTransformReplacement<PCollection<T>, PCollection<T>>
-          getReplacementTransform(
-              AppliedPTransform<
-                      PCollection<T>, PCollection<T>,
-                      CreatePCollectionView<T, Iterable<T>>>
-                  transform) {
+      public PTransformReplacement<PCollection<T>, PCollection<T>> getReplacementTransform(
+          AppliedPTransform<PCollection<T>, PCollection<T>, CreatePCollectionView<T, Iterable<T>>>
+              transform) {
         return PTransformReplacement.of(
             PTransformReplacements.getSingletonMainInput(transform),
             new StreamingViewAsIterable<>(transform.getTransform().getView()));
@@ -333,9 +339,9 @@ public class ApexRunner extends PipelineRunner<ApexRunnerResult> {
   }
 
   /**
-   * Combiner that combines {@code T}s into a single {@code List<T>} containing all inputs.
-   * They require the input {@link PCollection} fits in memory.
-   * For a large {@link PCollection} this is expected to crash!
+   * Combiner that combines {@code T}s into a single {@code List<T>} containing all inputs. They
+   * require the input {@link PCollection} fits in memory. For a large {@link PCollection} this is
+   * expected to crash!
    *
    * @param <T> the type of elements to concatenate.
    */
@@ -379,26 +385,25 @@ public class ApexRunner extends PipelineRunner<ApexRunnerResult> {
   }
 
   /**
-   * A {@link PTransformOverrideFactory} that overrides a
-   * <a href="https://s.apache.org/splittable-do-fn">Splittable DoFn</a> with
-   * {@link SplittableParDo}.
+   * A {@link PTransformOverrideFactory} that overrides a <a
+   * href="https://s.apache.org/splittable-do-fn">Splittable DoFn</a> with {@link SplittableParDo}.
    */
-  static class SplittableParDoOverrideFactory<InputT, OutputT> implements PTransformOverrideFactory<
-      PCollection<InputT>, PCollectionTuple, MultiOutput<InputT, OutputT>> {
+  static class SplittableParDoOverrideFactory<InputT, OutputT>
+      implements PTransformOverrideFactory<
+          PCollection<InputT>, PCollectionTuple, MultiOutput<InputT, OutputT>> {
     @Override
     public PTransformReplacement<PCollection<InputT>, PCollectionTuple> getReplacementTransform(
         AppliedPTransform<PCollection<InputT>, PCollectionTuple, MultiOutput<InputT, OutputT>>
-          transform) {
+            transform) {
       return PTransformReplacement.of(
           PTransformReplacements.getSingletonMainInput(transform),
           SplittableParDo.forAppliedParDo(transform));
     }
 
     @Override
-    public Map<PValue, ReplacementOutput> mapOutputs(Map<TupleTag<?>, PValue> outputs,
-        PCollectionTuple newOutput) {
+    public Map<PValue, ReplacementOutput> mapOutputs(
+        Map<TupleTag<?>, PValue> outputs, PCollectionTuple newOutput) {
       return ReplacementOutputs.tagged(outputs, newOutput);
     }
   }
-
 }

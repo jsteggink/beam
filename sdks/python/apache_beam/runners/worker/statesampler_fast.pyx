@@ -41,6 +41,7 @@ from apache_beam.metrics.execution cimport MetricsContainer
 
 cimport cython
 from cpython cimport pythread
+from libc cimport math
 from libc.stdint cimport int32_t, int64_t
 
 
@@ -70,25 +71,17 @@ cdef inline int64_t get_nsec_time() nogil:
 
 cdef class StateSampler(object):
   """Tracks time spent in states during pipeline execution."""
-  cdef int _sampling_period_ms
 
-  cdef list scoped_states_by_index
-
-  cdef public bint started
-  cdef public bint finished
-  cdef object sampling_thread
-
-  # This lock guards members that are shared between threads, specificaly
-  # finished, scoped_states_by_index, and the nsecs field of each state therein.
-  cdef pythread.PyThread_type_lock lock
-
-  cdef public int64_t state_transition_count
-  cdef public int64_t time_since_transition
-
-  cdef int32_t current_state_index
-
-  def __init__(self, sampling_period_ms, *args):
+  def __init__(self,
+               sampling_period_ms,
+               sampling_period_ms_start=None,
+               sampling_period_ratio=1.2):
     self._sampling_period_ms = sampling_period_ms
+    # Slowly ramp up to avoid excessive waiting for short stages, as well
+    # as more precise information in that case.
+    self._sampling_period_ms_start = (
+          sampling_period_ms_start or max(1, sampling_period_ms // 100))
+    self._sampling_period_ratio = sampling_period_ratio
     self.started = False
     self.finished = False
 
@@ -118,9 +111,13 @@ cdef class StateSampler(object):
     cdef int64_t last_nsecs = get_nsec_time()
     cdef int64_t elapsed_nsecs
     cdef int64_t latest_transition_count = self.state_transition_count
+    cdef int64_t sampling_period_us = self._sampling_period_ms_start * 1000
     with nogil:
       while True:
-        usleep(self._sampling_period_ms * 1000)
+        usleep(sampling_period_us)
+        sampling_period_us = <int64_t>math.fmin(
+            sampling_period_us * self._sampling_period_ratio,
+            self._sampling_period_ms * 1000)
         pythread.PyThread_acquire_lock(self.lock, pythread.WAIT_LOCK)
         try:
           if self.finished:
@@ -157,7 +154,7 @@ cdef class StateSampler(object):
     return self.scoped_states_by_index[self.current_state_index]
 
   cpdef _scoped_state(self, counter_name, output_counter,
-                      metrics_container=None):
+                      metrics_container):
     """Returns a context manager managing transitions for a given state.
     Args:
      counter_name: A CounterName object with information about the execution
@@ -185,14 +182,6 @@ cdef class StateSampler(object):
 
 cdef class ScopedState(object):
   """Context manager class managing transitions for a given sampler state."""
-
-  cdef readonly StateSampler sampler
-  cdef readonly int32_t state_index
-  cdef readonly object counter
-  cdef readonly object name
-  cdef readonly int64_t _nsecs
-  cdef int32_t old_state_index
-  cdef readonly MetricsContainer _metrics_container
 
   def __init__(
       self, sampler, name, state_index, counter=None, metrics_container=None):

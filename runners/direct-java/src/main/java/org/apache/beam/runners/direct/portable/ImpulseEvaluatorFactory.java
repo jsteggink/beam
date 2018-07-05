@@ -17,32 +17,38 @@
  */
 package org.apache.beam.runners.direct.portable;
 
+import static com.google.common.collect.Iterables.getOnlyElement;
+
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.collect.Iterables;
 import java.util.Collection;
 import java.util.Collections;
 import javax.annotation.Nullable;
-import org.apache.beam.sdk.runners.AppliedPTransform;
+import org.apache.beam.runners.core.construction.graph.PipelineNode.PCollectionNode;
+import org.apache.beam.runners.core.construction.graph.PipelineNode.PTransformNode;
+import org.apache.beam.runners.direct.ExecutableGraph;
 import org.apache.beam.sdk.transforms.Impulse;
 import org.apache.beam.sdk.transforms.PTransform;
 import org.apache.beam.sdk.transforms.windowing.BoundedWindow;
 import org.apache.beam.sdk.util.WindowedValue;
-import org.apache.beam.sdk.values.PBegin;
-import org.apache.beam.sdk.values.PCollection;
 
 /** The evaluator for the {@link Impulse} transform. Produces only empty byte arrays. */
 class ImpulseEvaluatorFactory implements TransformEvaluatorFactory {
-  private final EvaluationContext ctxt;
+  private final BundleFactory bundleFactory;
+  private final ExecutableGraph<PTransformNode, PCollectionNode> graph;
 
-  ImpulseEvaluatorFactory(EvaluationContext ctxt) {
-    this.ctxt = ctxt;
+  ImpulseEvaluatorFactory(
+      ExecutableGraph<PTransformNode, PCollectionNode> graph, BundleFactory bundleFactory) {
+    this.bundleFactory = bundleFactory;
+    this.graph = graph;
   }
 
   @Nullable
   @Override
   public <InputT> TransformEvaluator<InputT> forApplication(
-      AppliedPTransform<?, ?, ?> application, CommittedBundle<?> inputBundle) {
-    return (TransformEvaluator<InputT>) new ImpulseEvaluator(ctxt, (AppliedPTransform) application);
+      PTransformNode application, CommittedBundle<?> inputBundle) {
+    return (TransformEvaluator<InputT>)
+        new ImpulseEvaluator(
+            bundleFactory, application, getOnlyElement(graph.getProduced(application)));
   }
 
   @Override
@@ -51,23 +57,24 @@ class ImpulseEvaluatorFactory implements TransformEvaluatorFactory {
   }
 
   private static class ImpulseEvaluator implements TransformEvaluator<ImpulseShard> {
-    private final EvaluationContext ctxt;
-    private final AppliedPTransform<?, PCollection<byte[]>, Impulse> transform;
     private final StepTransformResult.Builder<ImpulseShard> result;
 
+    private final BundleFactory factory;
+    private final PCollectionNode outputPCollection;
+
     private ImpulseEvaluator(
-        EvaluationContext ctxt, AppliedPTransform<?, PCollection<byte[]>, Impulse> transform) {
-      this.ctxt = ctxt;
-      this.transform = transform;
-      this.result = StepTransformResult.withoutHold(transform);
+        BundleFactory factory, PTransformNode application, PCollectionNode outputPCollection) {
+      this.factory = factory;
+      result = StepTransformResult.withoutHold(application);
+      this.outputPCollection = outputPCollection;
     }
 
     @Override
     public void processElement(WindowedValue<ImpulseShard> element) throws Exception {
-      PCollection<byte[]> outputPCollection =
-          (PCollection<byte[]>) Iterables.getOnlyElement(transform.getOutputs().values());
       result.addOutput(
-          ctxt.createBundle(outputPCollection).add(WindowedValue.valueInGlobalWindow(new byte[0])));
+          factory
+              .createBundle(outputPCollection)
+              .add(WindowedValue.valueInGlobalWindow(new byte[0])));
     }
 
     @Override
@@ -80,20 +87,19 @@ class ImpulseEvaluatorFactory implements TransformEvaluatorFactory {
    * The {@link RootInputProvider} for the {@link Impulse} {@link PTransform}. Produces a single
    * {@link ImpulseShard}.
    */
-  static class ImpulseRootProvider implements RootInputProvider<byte[], ImpulseShard, PBegin> {
-    private final EvaluationContext ctxt;
+  static class ImpulseRootProvider implements RootInputProvider<ImpulseShard> {
+    private final BundleFactory bundleFactory;
 
-    ImpulseRootProvider(EvaluationContext ctxt) {
-      this.ctxt = ctxt;
+    ImpulseRootProvider(BundleFactory bundleFactory) {
+      this.bundleFactory = bundleFactory;
     }
 
     @Override
     public Collection<CommittedBundle<ImpulseShard>> getInitialInputs(
-        AppliedPTransform<PBegin, PCollection<byte[]>, PTransform<PBegin, PCollection<byte[]>>>
-            transform,
-        int targetParallelism) {
+        PTransformNode transform, int targetParallelism) {
       return Collections.singleton(
-          ctxt.<ImpulseShard>createRootBundle()
+          bundleFactory
+              .<ImpulseShard>createRootBundle()
               .add(WindowedValue.valueInGlobalWindow(new ImpulseShard()))
               .commit(BoundedWindow.TIMESTAMP_MIN_VALUE));
     }

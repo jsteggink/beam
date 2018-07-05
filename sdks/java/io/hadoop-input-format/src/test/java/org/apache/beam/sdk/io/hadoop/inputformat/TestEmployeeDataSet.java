@@ -14,6 +14,7 @@
  */
 package org.apache.beam.sdk.io.hadoop.inputformat;
 
+import com.google.common.base.Splitter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -24,7 +25,7 @@ import org.apache.hadoop.io.Text;
  * Test Utils used in {@link EmployeeInputFormat} and {@link ReuseObjectsEmployeeInputFormat} for
  * computing splits.
  */
-public class TestEmployeeDataSet {
+class TestEmployeeDataSet {
   public static final long NUMBER_OF_RECORDS_IN_EACH_SPLIT = 5L;
   public static final long NUMBER_OF_SPLITS = 3L;
   private static final List<KV<String, String>> data = new ArrayList<>();
@@ -32,8 +33,8 @@ public class TestEmployeeDataSet {
   /**
    * Returns List of employee details. Employee details are available in the form of {@link KV} in
    * which, key indicates employee id and value indicates employee details such as name and address
-   * separated by '_'. This is data input to {@link EmployeeInputFormat} and
-   * {@link ReuseObjectsEmployeeInputFormat}.
+   * separated by '_'. This is data input to {@link EmployeeInputFormat} and {@link
+   * ReuseObjectsEmployeeInputFormat}.
    */
   public static List<KV<String, String>> populateEmployeeData() {
     if (!data.isEmpty()) {
@@ -58,16 +59,16 @@ public class TestEmployeeDataSet {
   }
 
   /**
-   * This is a helper function used in unit tests for validating data against data read using
-   * {@link EmployeeInputFormat} and {@link ReuseObjectsEmployeeInputFormat}.
+   * This is a helper function used in unit tests for validating data against data read using {@link
+   * EmployeeInputFormat} and {@link ReuseObjectsEmployeeInputFormat}.
    */
   public static List<KV<Text, Employee>> getEmployeeData() {
     return (data.isEmpty() ? populateEmployeeData() : data)
         .stream()
         .map(
             input -> {
-              String[] empData = input.getValue().split("_");
-              return KV.of(new Text(input.getKey()), new Employee(empData[0], empData[1]));
+              List<String> empData = Splitter.on('_').splitToList(input.getValue());
+              return KV.of(new Text(input.getKey()), new Employee(empData.get(0), empData.get(1)));
             })
         .collect(Collectors.toList());
   }

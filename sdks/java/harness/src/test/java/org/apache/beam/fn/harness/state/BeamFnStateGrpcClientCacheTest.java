@@ -38,14 +38,13 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.LinkedBlockingQueue;
-import org.apache.beam.fn.harness.IdGenerator;
 import org.apache.beam.model.fnexecution.v1.BeamFnApi.StateRequest;
 import org.apache.beam.model.fnexecution.v1.BeamFnApi.StateResponse;
 import org.apache.beam.model.fnexecution.v1.BeamFnStateGrpc;
 import org.apache.beam.model.pipeline.v1.Endpoints;
-import org.apache.beam.sdk.fn.stream.StreamObserverFactory.StreamObserverClientFactory;
+import org.apache.beam.sdk.fn.IdGenerators;
+import org.apache.beam.sdk.fn.stream.OutboundObserverFactory;
 import org.apache.beam.sdk.fn.test.TestStreams;
-import org.apache.beam.sdk.options.PipelineOptionsFactory;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -78,25 +77,27 @@ public class BeamFnStateGrpcClientCacheTest {
         Endpoints.ApiServiceDescriptor.newBuilder()
             .setUrl(this.getClass().getName() + "-" + UUID.randomUUID().toString())
             .build();
-    testServer = InProcessServerBuilder.forName(apiServiceDescriptor.getUrl())
-        .addService(new BeamFnStateGrpc.BeamFnStateImplBase() {
-          @Override
-          public StreamObserver<StateRequest> state(
-              StreamObserver<StateResponse> outboundObserver) {
-            Uninterruptibles.putUninterruptibly(outboundServerObservers, outboundObserver);
-            return inboundServerObserver;
-          }
-        })
-        .build();
+    testServer =
+        InProcessServerBuilder.forName(apiServiceDescriptor.getUrl())
+            .addService(
+                new BeamFnStateGrpc.BeamFnStateImplBase() {
+                  @Override
+                  public StreamObserver<StateRequest> state(
+                      StreamObserver<StateResponse> outboundObserver) {
+                    Uninterruptibles.putUninterruptibly(outboundServerObservers, outboundObserver);
+                    return inboundServerObserver;
+                  }
+                })
+            .build();
     testServer.start();
 
     testChannel = InProcessChannelBuilder.forName(apiServiceDescriptor.getUrl()).build();
 
-    clientCache = new BeamFnStateGrpcClientCache(
-        PipelineOptionsFactory.create(),
-        IdGenerator::generate,
-        (Endpoints.ApiServiceDescriptor descriptor) -> testChannel,
-        this::createStreamForTest);
+    clientCache =
+        new BeamFnStateGrpcClientCache(
+            IdGenerators.decrementingLongs(),
+            (Endpoints.ApiServiceDescriptor descriptor) -> testChannel,
+            OutboundObserverFactory.trivial());
   }
 
   @After
@@ -107,11 +108,12 @@ public class BeamFnStateGrpcClientCacheTest {
 
   @Test
   public void testCachingOfClient() throws Exception {
-    assertSame(clientCache.forApiServiceDescriptor(apiServiceDescriptor),
+    assertSame(
+        clientCache.forApiServiceDescriptor(apiServiceDescriptor),
         clientCache.forApiServiceDescriptor(apiServiceDescriptor));
-    assertNotSame(clientCache.forApiServiceDescriptor(apiServiceDescriptor),
-        clientCache.forApiServiceDescriptor(
-            Endpoints.ApiServiceDescriptor.getDefaultInstance()));
+    assertNotSame(
+        clientCache.forApiServiceDescriptor(apiServiceDescriptor),
+        clientCache.forApiServiceDescriptor(Endpoints.ApiServiceDescriptor.getDefaultInstance()));
   }
 
   @Test
@@ -121,10 +123,8 @@ public class BeamFnStateGrpcClientCacheTest {
     CompletableFuture<StateResponse> successfulResponse = new CompletableFuture<>();
     CompletableFuture<StateResponse> unsuccessfulResponse = new CompletableFuture<>();
 
-    client.handle(
-        StateRequest.newBuilder().setInstructionReference(SUCCESS), successfulResponse);
-    client.handle(
-        StateRequest.newBuilder().setInstructionReference(FAIL), unsuccessfulResponse);
+    client.handle(StateRequest.newBuilder().setInstructionReference(SUCCESS), successfulResponse);
+    client.handle(StateRequest.newBuilder().setInstructionReference(FAIL), unsuccessfulResponse);
 
     // Wait for the client to connect.
     StreamObserver<StateResponse> outboundServerObserver = outboundServerObservers.take();
@@ -215,19 +215,12 @@ public class BeamFnStateGrpcClientCacheTest {
         outboundObserver.onNext(StateResponse.newBuilder().setId(value.getId()).build());
         return;
       case FAIL:
-        outboundObserver.onNext(StateResponse.newBuilder()
-            .setId(value.getId())
-            .setError(TEST_ERROR)
-            .build());
+        outboundObserver.onNext(
+            StateResponse.newBuilder().setId(value.getId()).setError(TEST_ERROR).build());
         return;
       default:
         outboundObserver.onNext(StateResponse.newBuilder().setId(value.getId()).build());
         return;
     }
-  }
-
-  private <ReqT, RespT> StreamObserver<RespT> createStreamForTest(
-      StreamObserverClientFactory<ReqT, RespT> clientFactory, StreamObserver<ReqT> handler) {
-    return clientFactory.outboundObserverFor(handler);
   }
 }

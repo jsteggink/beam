@@ -18,6 +18,7 @@
 
 package org.apache.beam.runners.dataflow;
 
+import static com.google.common.base.Preconditions.checkArgument;
 import static org.apache.beam.runners.core.construction.PTransformTranslation.PAR_DO_TRANSFORM_URN;
 import static org.apache.beam.runners.core.construction.ParDoTranslation.translateTimerSpec;
 import static org.apache.beam.sdk.transforms.reflect.DoFnSignatures.getStateSpecOrThrow;
@@ -26,7 +27,6 @@ import static org.apache.beam.sdk.transforms.reflect.DoFnSignatures.getTimerSpec
 import com.google.auto.service.AutoService;
 import com.google.common.collect.Iterables;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -37,7 +37,6 @@ import org.apache.beam.runners.core.construction.ForwardingPTransform;
 import org.apache.beam.runners.core.construction.PTransformReplacements;
 import org.apache.beam.runners.core.construction.PTransformTranslation;
 import org.apache.beam.runners.core.construction.ParDoTranslation;
-import org.apache.beam.runners.core.construction.RehydratedComponents;
 import org.apache.beam.runners.core.construction.SdkComponents;
 import org.apache.beam.runners.core.construction.SingleInputOutputOverrideFactory;
 import org.apache.beam.runners.core.construction.TransformPayloadTranslatorRegistrar;
@@ -135,7 +134,7 @@ public class PrimitiveParDoSingleFactory<InputT, OutputT>
 
     @Override
     public String getUrn(ParDoSingle<?, ?> transform) {
-      return PTransformTranslation.PAR_DO_TRANSFORM_URN;
+      return PAR_DO_TRANSFORM_URN;
     }
 
     @Override
@@ -149,21 +148,15 @@ public class PrimitiveParDoSingleFactory<InputT, OutputT>
           .build();
     }
 
-    @Override
-    public PTransformTranslation.RawPTransform<?, ?> rehydrate(
-        RunnerApi.PTransform protoTransform, RehydratedComponents rehydratedComponents)
-        throws IOException {
-      throw new UnsupportedOperationException(
-          String.format(
-              "%s.rehydrate should never be called; the serialized form is that of a ParDo",
-              getClass().getCanonicalName()));
-    }
-
     private static RunnerApi.ParDoPayload payloadForParDoSingle(
         final ParDoSingle<?, ?> parDo, SdkComponents components) throws IOException {
-
       final DoFn<?, ?> doFn = parDo.getFn();
       final DoFnSignature signature = DoFnSignatures.getSignature(doFn.getClass());
+      checkArgument(
+          !signature.processElement().isSplittable(),
+          String.format(
+              "Not expecting a splittable %s: should have been overridden",
+              ParDoSingle.class.getSimpleName()));
 
       return ParDoTranslation.payloadForParDoLike(
           new ParDoTranslation.ParDoLike() {
@@ -175,26 +168,13 @@ public class PrimitiveParDoSingleFactory<InputT, OutputT>
 
             @Override
             public List<RunnerApi.Parameter> translateParameters() {
-              List<RunnerApi.Parameter> parameters = new ArrayList<>();
-              for (DoFnSignature.Parameter parameter :
-                  signature.processElement().extraParameters()) {
-                RunnerApi.Parameter protoParameter = ParDoTranslation.translateParameter(parameter);
-                if (protoParameter != null) {
-                  parameters.add(protoParameter);
-                }
-              }
-              return parameters;
+              return ParDoTranslation.translateParameters(
+                  signature.processElement().extraParameters());
             }
 
             @Override
             public Map<String, RunnerApi.SideInput> translateSideInputs(SdkComponents components) {
-              Map<String, RunnerApi.SideInput> sideInputs = new HashMap<>();
-              for (PCollectionView<?> sideInput : parDo.getSideInputs()) {
-                sideInputs.put(
-                    sideInput.getTagInternal().getId(),
-                    ParDoTranslation.translateView(sideInput, components));
-              }
-              return sideInputs;
+              return ParDoTranslation.translateSideInputs(parDo.getSideInputs(), components);
             }
 
             @Override
@@ -226,7 +206,12 @@ public class PrimitiveParDoSingleFactory<InputT, OutputT>
 
             @Override
             public boolean isSplittable() {
-              return signature.processElement().isSplittable();
+              return false;
+            }
+
+            @Override
+            public String translateRestrictionCoderId(SdkComponents newComponents) {
+              return "";
             }
           },
           components);
@@ -242,12 +227,6 @@ public class PrimitiveParDoSingleFactory<InputT, OutputT>
             ? extends PTransformTranslation.TransformPayloadTranslator>
         getTransformPayloadTranslators() {
       return Collections.singletonMap(ParDoSingle.class, new PayloadTranslator());
-    }
-
-    @Override
-    public Map<String, ? extends PTransformTranslation.TransformPayloadTranslator>
-        getTransformRehydrators() {
-      return Collections.emptyMap();
     }
   }
 }

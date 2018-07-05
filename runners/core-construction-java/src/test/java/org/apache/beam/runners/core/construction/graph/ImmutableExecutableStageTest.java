@@ -39,9 +39,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-/**
- * Tests for {@link ImmutableExecutableStage}.
- */
+/** Tests for {@link ImmutableExecutableStage}. */
 @RunWith(JUnit4.class)
 public class ImmutableExecutableStageTest {
   @Test
@@ -92,15 +90,15 @@ public class ImmutableExecutableStageTest {
     assertThat(stage.getComponents().containsTransforms("pt"), is(true));
     assertThat(stage.getComponents().containsTransforms("other_pt"), is(false));
 
-    PTransform stagePTransform = stage.toPTransform();
+    PTransform stagePTransform = stage.toPTransform("foo");
     assertThat(stagePTransform.getOutputsMap(), hasValue("output.out"));
     assertThat(stagePTransform.getOutputsCount(), equalTo(1));
     assertThat(
         stagePTransform.getInputsMap(), allOf(hasValue("input.out"), hasValue("sideInput.in")));
     assertThat(stagePTransform.getInputsCount(), equalTo(2));
 
-    ExecutableStagePayload payload = ExecutableStagePayload.parseFrom(
-        stagePTransform.getSpec().getPayload());
+    ExecutableStagePayload payload =
+        ExecutableStagePayload.parseFrom(stagePTransform.getSpec().getPayload());
     assertThat(payload.getTransformsList(), contains("pt"));
     assertThat(ExecutableStage.fromPayload(payload), equalTo(stage));
   }

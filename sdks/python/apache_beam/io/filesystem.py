@@ -14,7 +14,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-"""File system abstraction for file-based sources and sinks."""
+"""File system abstraction for file-based sources and sinks.
+
+Note to implementors:
+  "path" arguments will be URLs in the form scheme://foo/bar. The exception is
+  LocalFileSystem, which gets unix-style paths in the form /foo/bar.
+"""
 
 from __future__ import absolute_import
 
@@ -307,7 +312,7 @@ class CompressedFile(object):
     Seeking behavior:
 
       * seeking from the end :data:`os.SEEK_END` the whole file is decompressed
-        once to determine it's size. Therefore it is preferred to use
+        once to determine its size. Therefore it is preferred to use
         :data:`os.SEEK_SET` or :data:`os.SEEK_CUR` to avoid the processing
         overhead
       * seeking backwards from the current position rewinds the file to ``0``
@@ -523,8 +528,7 @@ class FileSystem(BeamPlugin):
     """
     raise NotImplementedError
 
-  @staticmethod
-  def _url_dirname(url_or_path):
+  def _url_dirname(self, url_or_path):
     """Like posixpath.dirname, but preserves scheme:// prefix.
 
     Args:
@@ -668,12 +672,12 @@ class FileSystem(BeamPlugin):
 
   @abc.abstractmethod
   def size(self, path):
-    """Get size of path on the FileSystem.
+    """Get size in bytes of a file on the FileSystem.
 
     Args:
-      path: string path in question.
+      path: string filepath of file.
 
-    Returns: int size of path according to the FileSystem.
+    Returns: int size of file according to the FileSystem.
 
     Raises:
       ``BeamIOError`` if path doesn't exist.

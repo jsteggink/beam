@@ -27,12 +27,10 @@ import org.apache.beam.model.fnexecution.v1.BeamFnApi.StateGetResponse;
 import org.apache.beam.model.fnexecution.v1.BeamFnApi.StateRequest;
 import org.apache.beam.model.fnexecution.v1.BeamFnApi.StateResponse;
 import org.junit.Test;
-import org.junit.experimental.runners.Enclosed;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
 /** Tests for {@link StateFetchingIterators}. */
-@RunWith(Enclosed.class)
 public class StateFetchingIteratorsTest {
   /** Tests for {@link StateFetchingIterators.LazyBlockingStateFetchingIterator}. */
   @RunWith(JUnit4.class)
@@ -60,8 +58,13 @@ public class StateFetchingIteratorsTest {
 
     @Test
     public void testMultiWithEmptyByteStrings() throws Exception {
-      testFetch(ByteString.EMPTY, ByteString.copyFromUtf8("BC"), ByteString.EMPTY,
-          ByteString.EMPTY, ByteString.copyFromUtf8("DEF"), ByteString.EMPTY);
+      testFetch(
+          ByteString.EMPTY,
+          ByteString.copyFromUtf8("BC"),
+          ByteString.EMPTY,
+          ByteString.EMPTY,
+          ByteString.copyFromUtf8("DEF"),
+          ByteString.EMPTY);
     }
 
     private void testFetch(ByteString... expected) {

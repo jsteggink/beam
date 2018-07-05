@@ -20,10 +20,10 @@ package org.apache.beam.runners.direct.portable;
 import com.google.common.annotations.VisibleForTesting;
 import java.io.Closeable;
 import java.util.concurrent.Callable;
+import org.apache.beam.runners.core.construction.graph.PipelineNode.PTransformNode;
 import org.apache.beam.runners.core.metrics.MetricUpdates;
 import org.apache.beam.runners.core.metrics.MetricsContainerImpl;
 import org.apache.beam.sdk.metrics.MetricsEnvironment;
-import org.apache.beam.sdk.runners.AppliedPTransform;
 import org.apache.beam.sdk.util.WindowedValue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,7 +48,7 @@ class DirectTransformExecutor<T> implements TransformExecutor {
     @Override
     public TransformExecutor create(
         CommittedBundle<?> bundle,
-        AppliedPTransform<?, ?, ?> transform,
+        PTransformNode transform,
         CompletionCallback onComplete,
         TransformExecutorService executorService) {
       return new DirectTransformExecutor<>(
@@ -59,7 +59,7 @@ class DirectTransformExecutor<T> implements TransformExecutor {
   private final TransformEvaluatorRegistry evaluatorRegistry;
 
   /** The transform that will be evaluated. */
-  private final AppliedPTransform<?, ?, ?> transform;
+  private final PTransformNode transform;
   /** The inputs this {@link DirectTransformExecutor} will deliver to the transform. */
   private final CommittedBundle<T> inputBundle;
 
@@ -72,7 +72,7 @@ class DirectTransformExecutor<T> implements TransformExecutor {
       EvaluationContext context,
       TransformEvaluatorRegistry factory,
       CommittedBundle<T> inputBundle,
-      AppliedPTransform<?, ?, ?> transform,
+      PTransformNode transform,
       CompletionCallback completionCallback,
       TransformExecutorService transformEvaluationState) {
     this.evaluatorRegistry = factory;
@@ -88,10 +88,9 @@ class DirectTransformExecutor<T> implements TransformExecutor {
 
   @Override
   public void run() {
-    MetricsContainerImpl metricsContainer = new MetricsContainerImpl(transform.getFullName());
+    MetricsContainerImpl metricsContainer = new MetricsContainerImpl(transform.getId());
     try (Closeable metricsScope = MetricsEnvironment.scopedMetricsContainer(metricsContainer)) {
-      TransformEvaluator<T> evaluator =
-          evaluatorRegistry.forApplication(transform, inputBundle);
+      TransformEvaluator<T> evaluator = evaluatorRegistry.forApplication(transform, inputBundle);
       if (evaluator == null) {
         onComplete.handleEmpty(transform);
         // Nothing to do
@@ -119,13 +118,9 @@ class DirectTransformExecutor<T> implements TransformExecutor {
     }
   }
 
-  /**
-   * Processes all the elements in the input bundle using the transform evaluator.
-   */
+  /** Processes all the elements in the input bundle using the transform evaluator. */
   private void processElements(
-      TransformEvaluator<T> evaluator,
-      MetricsContainerImpl metricsContainer)
-      throws Exception {
+      TransformEvaluator<T> evaluator, MetricsContainerImpl metricsContainer) throws Exception {
     if (inputBundle != null) {
       for (WindowedValue<T> value : inputBundle.getElements()) {
         evaluator.processElement(value);
@@ -141,15 +136,13 @@ class DirectTransformExecutor<T> implements TransformExecutor {
   }
 
   /**
-   * Finishes processing the input bundle and commit the result using the
-   * {@link CompletionCallback}.
+   * Finishes processing the input bundle and commit the result using the {@link
+   * CompletionCallback}.
    *
-   * @return the {@link TransformResult} produced by
-   *         {@link TransformEvaluator#finishBundle()}
+   * @return the {@link TransformResult} produced by {@link TransformEvaluator#finishBundle()}
    */
   private TransformResult<T> finishBundle(
-      TransformEvaluator<T> evaluator, MetricsContainerImpl metricsContainer)
-      throws Exception {
+      TransformEvaluator<T> evaluator, MetricsContainerImpl metricsContainer) throws Exception {
     TransformResult<T> result =
         evaluator.finishBundle().withLogicalMetricUpdates(metricsContainer.getCumulative());
     onComplete.handleResult(inputBundle, result);

@@ -39,6 +39,7 @@ import org.apache.beam.model.pipeline.v1.RunnerApi.FunctionSpec;
 import org.apache.beam.model.pipeline.v1.RunnerApi.PCollection;
 import org.apache.beam.model.pipeline.v1.RunnerApi.PTransform;
 import org.apache.beam.runners.core.construction.PTransformTranslation;
+import org.apache.beam.runners.core.construction.SyntheticComponents;
 import org.apache.beam.runners.core.construction.graph.PipelineNode.PCollectionNode;
 import org.apache.beam.runners.core.construction.graph.PipelineNode.PTransformNode;
 
@@ -128,10 +129,11 @@ class OutputDeduplicator {
     Set<PTransformNode> introducedFlattens = new LinkedHashSet<>();
     for (Map.Entry<String, Collection<PCollectionNode>> partialFlattenTargets :
         originalToPartial.asMap().entrySet()) {
-      PTransform flattenPartialPCollections =
-          createFlattenOfPartials(partialFlattenTargets.getKey(), partialFlattenTargets.getValue());
       String flattenId =
-          SyntheticNodes.uniqueId("unzipped_flatten", unzippedComponents::containsTransforms);
+          SyntheticComponents.uniqueId("unzipped_flatten", unzippedComponents::containsTransforms);
+      PTransform flattenPartialPCollections =
+          createFlattenOfPartials(
+              flattenId, partialFlattenTargets.getKey(), partialFlattenTargets.getValue());
       unzippedComponents.putTransforms(flattenId, flattenPartialPCollections);
       introducedFlattens.add(PipelineNode.pTransform(flattenId, flattenPartialPCollections));
     }
@@ -161,7 +163,7 @@ class OutputDeduplicator {
   }
 
   private static PTransform createFlattenOfPartials(
-      String outputId, Collection<PCollectionNode> generatedInputs) {
+      String transformId, String outputId, Collection<PCollectionNode> generatedInputs) {
     PTransform.Builder newFlattenBuilder = PTransform.newBuilder();
     int i = 0;
     for (PCollectionNode generatedInput : generatedInputs) {
@@ -171,6 +173,8 @@ class OutputDeduplicator {
     }
     // Flatten all of the new partial nodes together.
     return newFlattenBuilder
+        // Use transform ID as unique name.
+        .setUniqueName(transformId)
         .putOutputs("output", outputId)
         .setSpec(FunctionSpec.newBuilder().setUrn(PTransformTranslation.FLATTEN_TRANSFORM_URN))
         .build();
@@ -257,7 +261,7 @@ class OutputDeduplicator {
             id ->
                 unzippedOutputs.values().stream().map(PCollectionNode::getId).anyMatch(id::equals));
     for (PCollectionNode duplicateOutput : duplicates) {
-      String id = SyntheticNodes.uniqueId(duplicateOutput.getId(), existingOrNewIds);
+      String id = SyntheticComponents.uniqueId(duplicateOutput.getId(), existingOrNewIds);
       PCollection partial = duplicateOutput.getPCollection().toBuilder().setUniqueName(id).build();
       // Check to make sure there is only one duplicated output with the same id - which ensures we
       // only introduce one 'partial output' per producer of that output.

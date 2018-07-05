@@ -94,7 +94,7 @@ public class InMemoryArtifactStagerService extends ArtifactStagingServiceImplBas
       if (writer == null) {
         checkArgument(value.getContentCase().equals(ContentCase.METADATA));
         writer = new BufferWritingObserver();
-        destination = value.getMetadata();
+        destination = value.getMetadata().getMetadata();
       } else {
         writer.onNext(value);
       }
@@ -153,7 +153,6 @@ public class InMemoryArtifactStagerService extends ArtifactStagingServiceImplBas
     }
 
     @Override
-    public void onCompleted() {
-    }
+    public void onCompleted() {}
   }
 }

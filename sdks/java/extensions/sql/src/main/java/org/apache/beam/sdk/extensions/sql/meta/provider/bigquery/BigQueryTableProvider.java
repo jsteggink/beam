@@ -18,12 +18,10 @@
 
 package org.apache.beam.sdk.extensions.sql.meta.provider.bigquery;
 
-import static org.apache.beam.sdk.extensions.sql.meta.provider.MetaUtils.getRowTypeFromTable;
-
-import java.util.Collections;
-import java.util.List;
+import com.google.auto.service.AutoService;
 import org.apache.beam.sdk.extensions.sql.BeamSqlTable;
 import org.apache.beam.sdk.extensions.sql.meta.Table;
+import org.apache.beam.sdk.extensions.sql.meta.provider.InMemoryMetaTableProvider;
 import org.apache.beam.sdk.extensions.sql.meta.provider.TableProvider;
 import org.apache.beam.sdk.schemas.Schema;
 
@@ -31,6 +29,7 @@ import org.apache.beam.sdk.schemas.Schema;
  * BigQuery table provider.
  *
  * <p>A sample of text table is:
+ *
  * <pre>{@code
  * CREATE TABLE ORDERS(
  *   ID INT COMMENT 'this is the primary key',
@@ -41,36 +40,19 @@ import org.apache.beam.sdk.schemas.Schema;
  * LOCATION '[PROJECT_ID]:[DATASET].[TABLE]'
  * }</pre>
  */
-public class BigQueryTableProvider implements TableProvider {
+@AutoService(TableProvider.class)
+public class BigQueryTableProvider extends InMemoryMetaTableProvider {
 
-  @Override public String getTableType() {
+  @Override
+  public String getTableType() {
     return "bigquery";
   }
 
-  @Override public BeamSqlTable buildBeamSqlTable(Table table) {
-    Schema schema = getRowTypeFromTable(table);
+  @Override
+  public BeamSqlTable buildBeamSqlTable(Table table) {
+    Schema schema = table.getSchema();
     String filePattern = table.getLocation();
 
     return new BeamBigQueryTable(schema, filePattern);
-  }
-
-  @Override public void createTable(Table table) {
-    // empty
-  }
-
-  @Override public void dropTable(String tableName) {
-    // empty
-  }
-
-  @Override public List<Table> listTables() {
-    return Collections.emptyList();
-  }
-
-  @Override public void init() {
-    // empty
-  }
-
-  @Override public void close() {
-    // empty
   }
 }

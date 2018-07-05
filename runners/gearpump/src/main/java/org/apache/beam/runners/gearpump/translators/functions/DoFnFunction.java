@@ -19,12 +19,11 @@
 package org.apache.beam.runners.gearpump.translators.functions;
 
 import com.google.common.collect.Iterables;
-import com.google.common.collect.Lists;
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Iterator;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -37,6 +36,7 @@ import org.apache.beam.runners.gearpump.translators.utils.DoFnRunnerFactory;
 import org.apache.beam.runners.gearpump.translators.utils.NoOpStepContext;
 import org.apache.beam.runners.gearpump.translators.utils.TranslatorUtils;
 import org.apache.beam.runners.gearpump.translators.utils.TranslatorUtils.RawUnionValue;
+import org.apache.beam.sdk.coders.Coder;
 import org.apache.beam.sdk.transforms.DoFn;
 import org.apache.beam.sdk.transforms.reflect.DoFnInvoker;
 import org.apache.beam.sdk.transforms.reflect.DoFnInvokers;
@@ -47,12 +47,10 @@ import org.apache.beam.sdk.values.TupleTag;
 import org.apache.beam.sdk.values.WindowingStrategy;
 import org.apache.gearpump.streaming.dsl.javaapi.functions.FlatMapFunction;
 
-/**
- * Gearpump {@link FlatMapFunction} wrapper over Beam {@link DoFn}.
- */
+/** Gearpump {@link FlatMapFunction} wrapper over Beam {@link DoFn}. */
 @SuppressWarnings("unchecked")
-public class DoFnFunction<InputT, OutputT> extends
-    FlatMapFunction<List<RawUnionValue>, RawUnionValue> {
+public class DoFnFunction<InputT, OutputT>
+    extends FlatMapFunction<List<RawUnionValue>, RawUnionValue> {
 
   private static final long serialVersionUID = -5701440128544343353L;
   private final DoFnRunnerFactory<InputT, OutputT> doFnRunnerFactory;
@@ -74,19 +72,21 @@ public class DoFnFunction<InputT, OutputT> extends
       Collection<PCollectionView<?>> sideInputs,
       Map<String, PCollectionView<?>> sideInputTagMapping,
       TupleTag<OutputT> mainOutput,
+      Map<TupleTag<?>, Coder<?>> outputCoders,
       List<TupleTag<?>> sideOutputs) {
     this.doFn = doFn;
     this.outputManager = new DoFnOutputManager();
-    this.doFnRunnerFactory = new DoFnRunnerFactory<>(
-        pipelineOptions,
-        doFn,
-        sideInputs,
-        outputManager,
-        mainOutput,
-        sideOutputs,
-        new NoOpStepContext(),
-        windowingStrategy
-    );
+    this.doFnRunnerFactory =
+        new DoFnRunnerFactory<>(
+            pipelineOptions,
+            doFn,
+            sideInputs,
+            outputManager,
+            mainOutput,
+            sideOutputs,
+            new NoOpStepContext(),
+            outputCoders,
+            windowingStrategy);
     this.sideInputs = sideInputs;
     this.tagsToSideInputs = sideInputTagMapping;
     this.mainOutput = mainOutput;
@@ -95,14 +95,13 @@ public class DoFnFunction<InputT, OutputT> extends
 
   @Override
   public void setup() {
-    sideInputReader = new SideInputHandler(sideInputs,
-        InMemoryStateInternals.<Void>forKey(null));
+    sideInputReader = new SideInputHandler(sideInputs, InMemoryStateInternals.<Void>forKey(null));
     doFnInvoker = DoFnInvokers.invokerFor(doFn);
     doFnInvoker.invokeSetup();
 
     doFnRunner = doFnRunnerFactory.createRunner(sideInputReader);
 
-    pushedBackValues = new LinkedList<>();
+    pushedBackValues = new ArrayList<>();
     outputManager.setup(mainOutput, sideOutputs);
   }
 
@@ -117,7 +116,7 @@ public class DoFnFunction<InputT, OutputT> extends
 
     doFnRunner.startBundle();
 
-    for (RawUnionValue unionValue: inputs) {
+    for (RawUnionValue unionValue : inputs) {
       final String tag = unionValue.getUnionTag();
       if ("0".equals(tag)) {
         // main input
@@ -131,21 +130,21 @@ public class DoFnFunction<InputT, OutputT> extends
       }
     }
 
-    for (PCollectionView<?> sideInput: sideInputs) {
+    for (PCollectionView<?> sideInput : sideInputs) {
       for (WindowedValue<InputT> value : pushedBackValues) {
-        for (BoundedWindow win: value.getWindows()) {
-          BoundedWindow sideInputWindow =
-              sideInput.getWindowMappingFn().getSideInputWindow(win);
+        for (BoundedWindow win : value.getWindows()) {
+          BoundedWindow sideInputWindow = sideInput.getWindowMappingFn().getSideInputWindow(win);
           if (!sideInputReader.isReady(sideInput, sideInputWindow)) {
-            Object emptyValue = WindowedValue.of(
-                Lists.newArrayList(), value.getTimestamp(), sideInputWindow, value.getPane());
+            Object emptyValue =
+                WindowedValue.of(
+                    new ArrayList<>(), value.getTimestamp(), sideInputWindow, value.getPane());
             sideInputReader.addSideInputValue(sideInput, (WindowedValue<Iterable<?>>) emptyValue);
           }
         }
       }
     }
 
-    List<WindowedValue<InputT>> nextPushedBackValues = new LinkedList<>();
+    List<WindowedValue<InputT>> nextPushedBackValues = new ArrayList<>();
     for (WindowedValue<InputT> value : pushedBackValues) {
       Iterable<WindowedValue<InputT>> values = doFnRunner.processElementInReadyWindows(value);
       Iterables.addAll(nextPushedBackValues, values);
@@ -172,7 +171,7 @@ public class DoFnFunction<InputT, OutputT> extends
     }
 
     void setup(TupleTag<?> mainOutput, List<TupleTag<?>> sideOutputs) {
-      outputs = new LinkedList<>();
+      outputs = new ArrayList<>();
       outputTags = new HashSet<>();
       outputTags.add(mainOutput);
       outputTags.addAll(sideOutputs);

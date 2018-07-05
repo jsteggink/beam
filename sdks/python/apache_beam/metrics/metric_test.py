@@ -15,7 +15,10 @@
 # limitations under the License.
 #
 
+from __future__ import absolute_import
+
 import unittest
+from builtins import object
 
 from apache_beam.metrics.cells import DistributionData
 from apache_beam.metrics.execution import MetricKey
@@ -121,6 +124,7 @@ class MetricsTest(unittest.TestCase):
     statesampler.set_current_tracker(sampler)
     state1 = sampler.scoped_state('mystep', 'myState',
                                   metrics_container=MetricsContainer('mystep'))
+    sampler.start()
     with state1:
       counter_ns = 'aCounterNamespace'
       distro_ns = 'aDistributionNamespace'
@@ -144,6 +148,7 @@ class MetricsTest(unittest.TestCase):
       self.assertEqual(
           container.distributions[MetricName(distro_ns, name)].get_cumulative(),
           DistributionData(12, 2, 2, 10))
+    sampler.stop()
 
 
 if __name__ == '__main__':

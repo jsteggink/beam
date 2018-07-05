@@ -56,9 +56,7 @@ import org.joda.time.Instant;
 import org.junit.Before;
 import org.junit.Test;
 
-/**
- * Tests for {@link StateInternals}.
- */
+/** Tests for {@link StateInternals}. */
 public abstract class StateInternalsTest {
 
   private static final BoundedWindow WINDOW_1 = new IntervalWindow(new Instant(0), new Instant(10));
@@ -68,9 +66,8 @@ public abstract class StateInternalsTest {
 
   private static final StateTag<ValueState<String>> STRING_VALUE_ADDR =
       StateTags.value("stringValue", StringUtf8Coder.of());
-  private static final StateTag<CombiningState<Integer, int[], Integer>>
-      SUM_INTEGER_ADDR = StateTags.combiningValueFromInputInternal(
-          "sumInteger", VarIntCoder.of(), Sum.ofIntegers());
+  private static final StateTag<CombiningState<Integer, int[], Integer>> SUM_INTEGER_ADDR =
+      StateTags.combiningValueFromInputInternal("sumInteger", VarIntCoder.of(), Sum.ofIntegers());
   private static final StateTag<BagState<String>> STRING_BAG_ADDR =
       StateTags.bag("stringBag", StringUtf8Coder.of());
   private static final StateTag<SetState<String>> STRING_SET_ADDR =
@@ -106,9 +103,7 @@ public abstract class StateInternalsTest {
 
     // State instances are cached, but depend on the namespace.
     assertThat(underTest.state(NAMESPACE_1, STRING_VALUE_ADDR), equalTo(value));
-    assertThat(
-        underTest.state(NAMESPACE_2, STRING_VALUE_ADDR),
-        Matchers.not(equalTo(value)));
+    assertThat(underTest.state(NAMESPACE_2, STRING_VALUE_ADDR), not(equalTo(value)));
 
     assertThat(value.read(), Matchers.nullValue());
     value.write("hello");
@@ -230,7 +225,6 @@ public abstract class StateInternalsTest {
     value.clear();
     assertThat(value.read(), Matchers.emptyIterable());
     assertThat(underTest.state(NAMESPACE_1, STRING_SET_ADDR), equalTo(value));
-
   }
 
   @Test
@@ -299,35 +293,41 @@ public abstract class StateInternalsTest {
       return new MapEntry<>(k, v);
     }
 
+    @Override
     public final K getKey() {
       return key;
     }
+
+    @Override
     public final V getValue() {
       return value;
     }
 
+    @Override
     public final String toString() {
       return key + "=" + value;
     }
 
+    @Override
     public final int hashCode() {
       return Objects.hashCode(key) ^ Objects.hashCode(value);
     }
 
+    @Override
     public final V setValue(V newValue) {
       V oldValue = value;
       value = newValue;
       return oldValue;
     }
 
+    @Override
     public final boolean equals(Object o) {
       if (o == this) {
         return true;
       }
       if (o instanceof Map.Entry) {
         Map.Entry<?, ?> e = (Map.Entry<?, ?>) o;
-        if (Objects.equals(key, e.getKey())
-            && Objects.equals(value, e.getValue())) {
+        if (Objects.equals(key, e.getKey()) && Objects.equals(value, e.getValue())) {
           return true;
         }
       }
@@ -350,8 +350,8 @@ public abstract class StateInternalsTest {
     value.put("B", 2);
     value.put("A", 11);
     assertThat(value.putIfAbsent("B", 22).read(), equalTo(2));
-    assertThat(value.entries().read(), containsInAnyOrder(MapEntry.of("A", 11),
-        MapEntry.of("B", 2)));
+    assertThat(
+        value.entries().read(), containsInAnyOrder(MapEntry.of("A", 11), MapEntry.of("B", 2)));
 
     // remove
     value.remove("A");
@@ -424,10 +424,8 @@ public abstract class StateInternalsTest {
 
   @Test
   public void testMergeCombiningValueIntoSource() throws Exception {
-    CombiningState<Integer, int[], Integer> value1 =
-        underTest.state(NAMESPACE_1, SUM_INTEGER_ADDR);
-    CombiningState<Integer, int[], Integer> value2 =
-        underTest.state(NAMESPACE_2, SUM_INTEGER_ADDR);
+    CombiningState<Integer, int[], Integer> value1 = underTest.state(NAMESPACE_1, SUM_INTEGER_ADDR);
+    CombiningState<Integer, int[], Integer> value2 = underTest.state(NAMESPACE_2, SUM_INTEGER_ADDR);
 
     value1.add(5);
     value2.add(10);
@@ -445,12 +443,9 @@ public abstract class StateInternalsTest {
 
   @Test
   public void testMergeCombiningValueIntoNewNamespace() throws Exception {
-    CombiningState<Integer, int[], Integer> value1 =
-        underTest.state(NAMESPACE_1, SUM_INTEGER_ADDR);
-    CombiningState<Integer, int[], Integer> value2 =
-        underTest.state(NAMESPACE_2, SUM_INTEGER_ADDR);
-    CombiningState<Integer, int[], Integer> value3 =
-        underTest.state(NAMESPACE_3, SUM_INTEGER_ADDR);
+    CombiningState<Integer, int[], Integer> value1 = underTest.state(NAMESPACE_1, SUM_INTEGER_ADDR);
+    CombiningState<Integer, int[], Integer> value2 = underTest.state(NAMESPACE_2, SUM_INTEGER_ADDR);
+    CombiningState<Integer, int[], Integer> value3 = underTest.state(NAMESPACE_3, SUM_INTEGER_ADDR);
 
     value1.add(5);
     value2.add(10);
@@ -466,8 +461,7 @@ public abstract class StateInternalsTest {
 
   @Test
   public void testWatermarkEarliestState() throws Exception {
-    WatermarkHoldState value =
-        underTest.state(NAMESPACE_1, WATERMARK_EARLIEST_ADDR);
+    WatermarkHoldState value = underTest.state(NAMESPACE_1, WATERMARK_EARLIEST_ADDR);
 
     // State instances are cached, but depend on the namespace.
     assertEquals(value, underTest.state(NAMESPACE_1, WATERMARK_EARLIEST_ADDR));
@@ -490,8 +484,7 @@ public abstract class StateInternalsTest {
 
   @Test
   public void testWatermarkLatestState() throws Exception {
-    WatermarkHoldState value =
-        underTest.state(NAMESPACE_1, WATERMARK_LATEST_ADDR);
+    WatermarkHoldState value = underTest.state(NAMESPACE_1, WATERMARK_LATEST_ADDR);
 
     // State instances are cached, but depend on the namespace.
     assertEquals(value, underTest.state(NAMESPACE_1, WATERMARK_LATEST_ADDR));
@@ -531,8 +524,7 @@ public abstract class StateInternalsTest {
 
   @Test
   public void testWatermarkStateIsEmpty() throws Exception {
-    WatermarkHoldState value =
-        underTest.state(NAMESPACE_1, WATERMARK_EARLIEST_ADDR);
+    WatermarkHoldState value = underTest.state(NAMESPACE_1, WATERMARK_EARLIEST_ADDR);
 
     assertThat(value.isEmpty().read(), Matchers.is(true));
     ReadableState<Boolean> readFuture = value.isEmpty();
@@ -541,48 +533,6 @@ public abstract class StateInternalsTest {
 
     value.clear();
     assertThat(readFuture.read(), Matchers.is(true));
-  }
-
-  @Test
-  public void testMergeEarliestWatermarkIntoSource() throws Exception {
-    WatermarkHoldState value1 =
-        underTest.state(NAMESPACE_1, WATERMARK_EARLIEST_ADDR);
-    WatermarkHoldState value2 =
-        underTest.state(NAMESPACE_2, WATERMARK_EARLIEST_ADDR);
-
-    value1.add(new Instant(3000));
-    value2.add(new Instant(5000));
-    value1.add(new Instant(4000));
-    value2.add(new Instant(2000));
-
-    // Merging clears the old values and updates the merged value.
-    StateMerging.mergeWatermarks(Arrays.asList(value1, value2), value1, WINDOW_1);
-
-    assertThat(value1.read(), equalTo(new Instant(2000)));
-    assertThat(value2.read(), equalTo(null));
-  }
-
-  @Test
-  public void testMergeLatestWatermarkIntoSource() throws Exception {
-    WatermarkHoldState value1 =
-        underTest.state(NAMESPACE_1, WATERMARK_LATEST_ADDR);
-    WatermarkHoldState value2 =
-        underTest.state(NAMESPACE_2, WATERMARK_LATEST_ADDR);
-    WatermarkHoldState value3 =
-        underTest.state(NAMESPACE_3, WATERMARK_LATEST_ADDR);
-
-    value1.add(new Instant(3000));
-    value2.add(new Instant(5000));
-    value1.add(new Instant(4000));
-    value2.add(new Instant(2000));
-
-    // Merging clears the old values and updates the result value.
-    StateMerging.mergeWatermarks(Arrays.asList(value1, value2), value3, WINDOW_1);
-
-    // Merging clears the old values and updates the result value.
-    assertThat(value3.read(), equalTo(new Instant(5000)));
-    assertThat(value1.read(), equalTo(null));
-    assertThat(value2.read(), equalTo(null));
   }
 
   @Test

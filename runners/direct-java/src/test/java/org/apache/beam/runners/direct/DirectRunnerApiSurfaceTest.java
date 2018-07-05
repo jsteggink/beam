@@ -23,6 +23,7 @@ import static org.junit.Assert.assertThat;
 
 import com.google.common.collect.ImmutableSet;
 import java.util.Set;
+import org.apache.beam.runners.direct.portable.ExecutableGraphBuilder;
 import org.apache.beam.sdk.Pipeline;
 import org.apache.beam.sdk.PipelineRunner;
 import org.apache.beam.sdk.metrics.MetricResults;
@@ -45,9 +46,9 @@ public class DirectRunnerApiSurfaceTest {
         ImmutableSet.of(
             "org.apache.beam.sdk",
             "org.apache.beam.runners.direct",
-            "org.apache.beam.runners.direct.portable",
             "org.joda.time",
-            "javax.annotation");
+            "javax.annotation",
+            "java.math");
 
     final Package thisPackage = getClass().getPackage();
     final ClassLoader thisClassLoader = getClass().getClassLoader();
@@ -63,6 +64,12 @@ public class DirectRunnerApiSurfaceTest {
             .pruningClass(DisplayData.Builder.class)
             .pruningClass(MetricResults.class)
             .pruningClass(DirectGraphs.class)
+            .pruningClass(
+                WatermarkManager.class /* TODO: BEAM-4237 Consider moving to local-java */)
+            .pruningClass(ExecutableGraphBuilder.class)
+            .pruningPattern(
+                "org[.]apache[.]beam[.]runners[.]direct[.]portable.*"
+                /* TODO: BEAM-4237 reconsider package layout with the ReferenceRunner */ )
             .pruningPattern("org[.]apache[.]beam[.].*Test.*")
             .pruningPattern("org[.]apache[.]beam[.].*IT")
             .pruningPattern("java[.]io.*")

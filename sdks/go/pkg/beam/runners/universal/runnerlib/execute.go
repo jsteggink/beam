@@ -39,28 +39,36 @@ func Execute(ctx context.Context, p *pb.Pipeline, endpoint string, opt *JobOptio
 	defer cc.Close()
 	client := jobpb.NewJobServiceClient(cc)
 
-	prepID, artifactEndpoint, err := Prepare(ctx, client, p, opt)
+	prepID, artifactEndpoint, st, err := Prepare(ctx, client, p, opt)
 	if err != nil {
 		return "", err
 	}
 
-	log.Infof(ctx, "Prepared job with id: %v", prepID)
+	log.Infof(ctx, "Prepared job with id: %v and staging token: %v", prepID, st)
 
 	// (2) Stage artifacts.
 
-	if opt.Worker == "" {
-		worker, err := BuildTempWorkerBinary(ctx)
-		if err != nil {
-			return "", err
-		}
-		defer os.Remove(worker)
+	bin := opt.Worker
+	if bin == "" {
+		if self, ok := IsWorkerCompatibleBinary(); ok {
+			bin = self
+			log.Infof(ctx, "Using running binary as worker binary: '%v'", bin)
+		} else {
+			// Cross-compile as last resort.
 
-		opt.Worker = worker
+			worker, err := BuildTempWorkerBinary(ctx)
+			if err != nil {
+				return "", err
+			}
+			defer os.Remove(worker)
+
+			bin = worker
+		}
 	} else {
-		log.Infof(ctx, "Using specified worker binary: '%v'", opt.Worker)
+		log.Infof(ctx, "Using specified worker binary: '%v'", bin)
 	}
 
-	token, err := Stage(ctx, prepID, artifactEndpoint, opt.Worker)
+	token, err := Stage(ctx, prepID, artifactEndpoint, bin, st)
 	if err != nil {
 		return "", err
 	}

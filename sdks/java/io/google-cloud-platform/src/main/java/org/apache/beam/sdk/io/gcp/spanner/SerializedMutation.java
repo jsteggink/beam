@@ -21,15 +21,15 @@ import com.google.auto.value.AutoValue;
 
 @AutoValue
 abstract class SerializedMutation {
-  static SerializedMutation create(String tableName, byte[] key,
-      byte[] bytes) {
+  static SerializedMutation create(String tableName, byte[] key, byte[] bytes) {
     return new AutoValue_SerializedMutation(tableName, key, bytes);
   }
 
   abstract String getTableName();
 
+  @SuppressWarnings("mutable")
   abstract byte[] getEncodedKey();
 
+  @SuppressWarnings("mutable")
   abstract byte[] getMutationGroupBytes();
-
 }

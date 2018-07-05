@@ -13,6 +13,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package dataflow contains the Dataflow runner for submitting pipelines
+// to Google Cloud Dataflow.
 package dataflow
 
 import (
@@ -24,11 +26,11 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/user"
 	"path"
 	"time"
 
 	"github.com/apache/beam/sdks/go/pkg/beam"
+	"github.com/apache/beam/sdks/go/pkg/beam/core/graph"
 	"github.com/apache/beam/sdks/go/pkg/beam/core/runtime/graphx"
 	// Importing to get the side effect of the remote execution hook. See init().
 	_ "github.com/apache/beam/sdks/go/pkg/beam/core/runtime/harness/init"
@@ -52,13 +54,13 @@ var (
 	endpoint        = flag.String("dataflow_endpoint", "", "Dataflow endpoint (optional).")
 	stagingLocation = flag.String("staging_location", "", "GCS staging location (required).")
 	image           = flag.String("worker_harness_container_image", "", "Worker harness container image (required).")
+	labels          = flag.String("labels", "", "JSON-formatted map[string]string of job labels (optional).")
 	numWorkers      = flag.Int64("num_workers", 0, "Number of workers (optional).")
 	zone            = flag.String("zone", "", "GCP zone (optional)")
 	region          = flag.String("region", "us-central1", "GCP Region (optional)")
 	network         = flag.String("network", "", "GCP network (optional)")
 	tempLocation    = flag.String("temp_location", "", "Temp location (optional)")
 	machineType     = flag.String("worker_machine_type", "", "GCE machine type (optional)")
-	streaming       = flag.Bool("streaming", false, "Streaming job")
 
 	dryRun         = flag.Bool("dry_run", false, "Dry run. Just print the job, but don't submit it.")
 	teardownPolicy = flag.String("teardown_policy", "", "Job teardown policy (internal only).")
@@ -93,9 +95,15 @@ func Execute(ctx context.Context, p *beam.Pipeline) error {
 	if *image == "" {
 		*image = jobopts.GetContainerImage(ctx)
 	}
+	var jobLabels map[string]string
+	if *labels != "" {
+		if err := json.Unmarshal([]byte(*labels), &jobLabels); err != nil {
+			return fmt.Errorf("error reading --label flag as JSON: %v", err)
+		}
+	}
 	jobName := jobopts.GetJobName()
 
-	edges, _, err := p.Build()
+	edges, nodes, err := p.Build()
 	if err != nil {
 		return err
 	}
@@ -119,21 +127,29 @@ func Execute(ctx context.Context, p *beam.Pipeline) error {
 
 	// (1) Upload Go binary and model to GCS.
 
-	if *jobopts.WorkerBinary == "" {
-		worker, err := runnerlib.BuildTempWorkerBinary(ctx)
-		if err != nil {
-			return err
-		}
-		defer os.Remove(worker)
+	bin := *jobopts.WorkerBinary
+	if bin == "" {
+		if self, ok := runnerlib.IsWorkerCompatibleBinary(); ok {
+			bin = self
+			log.Infof(ctx, "Using running binary as worker binary: '%v'", bin)
+		} else {
+			// Cross-compile as last resort.
 
-		*jobopts.WorkerBinary = worker
+			worker, err := runnerlib.BuildTempWorkerBinary(ctx)
+			if err != nil {
+				return err
+			}
+			defer os.Remove(worker)
+
+			bin = worker
+		}
 	} else {
-		log.Infof(ctx, "Using specified worker binary: '%v'", *jobopts.WorkerBinary)
+		log.Infof(ctx, "Using specified worker binary: '%v'", bin)
 	}
 
-	log.Infof(ctx, "Staging worker binary: %v", *jobopts.WorkerBinary)
+	log.Infof(ctx, "Staging worker binary: %v", bin)
 
-	binary, err := stageWorker(ctx, project, *stagingLocation, *jobopts.WorkerBinary)
+	binary, err := stageWorker(ctx, project, *stagingLocation, bin)
 	if err != nil {
 		return err
 	}
@@ -160,7 +176,9 @@ func Execute(ctx context.Context, p *beam.Pipeline) error {
 
 	jobType := "JOB_TYPE_BATCH"
 	apiJobType := "FNAPI_BATCH"
-	if *streaming {
+
+	streaming := !graph.Bounded(nodes)
+	if streaming {
 		jobType = "JOB_TYPE_STREAMING"
 		apiJobType = "FNAPI_STREAMING"
 	}
@@ -201,7 +219,8 @@ func Execute(ctx context.Context, p *beam.Pipeline) error {
 			TempStoragePrefix: *stagingLocation + "/tmp",
 			Experiments:       append(jobopts.GetExperiments(), "beam_fn_api"),
 		},
-		Steps: steps,
+		Labels: jobLabels,
+		Steps:  steps,
 	}
 
 	if *numWorkers > 0 {
@@ -213,7 +232,7 @@ func Execute(ctx context.Context, p *beam.Pipeline) error {
 	if *tempLocation != "" {
 		job.Environment.TempStoragePrefix = *tempLocation
 	}
-	if *streaming {
+	if streaming {
 		// Add separate data disk for streaming jobs
 		job.Environment.WorkerPools[0].DataDisks = []*df.Disk{{}}
 	}
@@ -318,16 +337,8 @@ func stageWorker(ctx context.Context, project, location, worker string) (string,
 		return "", fmt.Errorf("failed to open worker binary %s: %v", worker, err)
 	}
 	defer fd.Close()
-	defer os.Remove(worker)
 
 	return gcsx.Upload(client, project, bucket, obj, fd)
-}
-
-func username() string {
-	if u, err := user.Current(); err == nil {
-		return u.Username
-	}
-	return "anon"
 }
 
 func findPipelineFlags() []*displayData {

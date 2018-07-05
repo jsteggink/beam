@@ -32,12 +32,13 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 
+import com.google.common.base.Charsets;
 import com.google.common.base.Optional;
 import com.google.common.collect.Lists;
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileReader;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -161,11 +162,12 @@ public class WriteFilesTest {
     }
   }
 
-  private static class VerifyFilesExist<DestinationT> extends
-      PTransform<PCollection<KV<DestinationT, String>>, PDone> {
+  private static class VerifyFilesExist<DestinationT>
+      extends PTransform<PCollection<KV<DestinationT, String>>, PDone> {
     @Override
     public PDone expand(PCollection<KV<DestinationT, String>> input) {
-      input.apply(Values.create())
+      input
+          .apply(Values.create())
           .apply(FileIO.matchAll().withEmptyMatchTreatment(EmptyMatchTreatment.DISALLOW));
       return PDone.in(input.getPipeline());
     }
@@ -253,7 +255,8 @@ public class WriteFilesTest {
     p.apply(Create.timestamped(inputs, timestamps).withCoder(StringUtf8Coder.of()))
         .apply(IDENTITY_MAP)
         .apply(write)
-        .getPerDestinationOutputFilenames().apply(new VerifyFilesExist<>());
+        .getPerDestinationOutputFilenames()
+        .apply(new VerifyFilesExist<>());
 
     p.run();
 
@@ -443,7 +446,6 @@ public class WriteFilesTest {
           baseOutputDirectory.resolve("file_" + destination, StandardResolveOptions.RESOLVE_FILE),
           "simple");
     }
-
   }
 
   @Test
@@ -468,8 +470,7 @@ public class WriteFilesTest {
       throws IOException {
     TestDestinations dynamicDestinations = new TestDestinations(getBaseOutputDirectory());
     SimpleSink<Integer> sink =
-        new SimpleSink<>(
-            getBaseOutputDirectory(), dynamicDestinations, Compression.UNCOMPRESSED);
+        new SimpleSink<>(getBaseOutputDirectory(), dynamicDestinations, Compression.UNCOMPRESSED);
 
     // Flag to validate that the pipeline options are passed to the Sink.
     WriteOptions options = TestPipeline.testingPipelineOptions().as(WriteOptions.class);
@@ -679,7 +680,8 @@ public class WriteFilesTest {
     p.apply(Create.timestamped(inputs, timestamps).withCoder(StringUtf8Coder.of()))
         .apply(transform)
         .apply(write)
-        .getPerDestinationOutputFilenames().apply(new VerifyFilesExist<>());
+        .getPerDestinationOutputFilenames()
+        .apply(new VerifyFilesExist<>());
     p.run();
 
     Optional<Integer> numShards =
@@ -690,7 +692,9 @@ public class WriteFilesTest {
   }
 
   static void checkFileContents(
-      String baseName, List<String> inputs, Optional<Integer> numExpectedShards,
+      String baseName,
+      List<String> inputs,
+      Optional<Integer> numExpectedShards,
       boolean expectRemovedTempDirectory)
       throws IOException {
     List<File> outputFiles = Lists.newArrayList();
@@ -723,8 +727,8 @@ public class WriteFilesTest {
 
     List<String> actual = Lists.newArrayList();
     for (File outputFile : outputFiles) {
-      try (BufferedReader reader = new BufferedReader(new FileReader(outputFile))) {
-        for (;;) {
+      try (BufferedReader reader = Files.newBufferedReader(outputFile.toPath(), Charsets.UTF_8)) {
+        for (; ; ) {
           String line = reader.readLine();
           if (line == null) {
             break;

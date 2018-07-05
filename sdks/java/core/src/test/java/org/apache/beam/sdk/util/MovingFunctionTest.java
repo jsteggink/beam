@@ -27,14 +27,12 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-/**
- * Tests {@link MovingFunction}.
- */
+/** Tests {@link MovingFunction}. */
 @RunWith(JUnit4.class)
 public class MovingFunctionTest {
 
   private static final long SAMPLE_PERIOD = 100;
-  private static final long SAMPLE_UPDATE = 10;
+  private static final int SAMPLE_UPDATE = 10;
   private static final int SIGNIFICANT_BUCKETS = 2;
   private static final int SIGNIFICANT_SAMPLES = 10;
 
@@ -52,10 +50,8 @@ public class MovingFunctionTest {
       };
 
   private MovingFunction newFunc() {
-    return new
-        MovingFunction(SAMPLE_PERIOD, SAMPLE_UPDATE, SIGNIFICANT_BUCKETS,
-                       SIGNIFICANT_SAMPLES, SUM);
-
+    return new MovingFunction(
+        SAMPLE_PERIOD, SAMPLE_UPDATE, SIGNIFICANT_BUCKETS, SIGNIFICANT_SAMPLES, SUM);
   }
 
   @Test
@@ -94,7 +90,7 @@ public class MovingFunctionTest {
     MovingFunction f = newFunc();
     int lost = 0;
     for (int i = 0; i < SAMPLE_PERIOD * 2; i++) {
-      f.add(i , 1);
+      f.add(i, 1);
       if (i >= SAMPLE_PERIOD && i % SAMPLE_UPDATE == 0) {
         lost += SAMPLE_UPDATE;
       }

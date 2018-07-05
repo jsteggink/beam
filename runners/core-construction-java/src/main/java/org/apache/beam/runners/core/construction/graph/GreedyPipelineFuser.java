@@ -36,7 +36,6 @@ import java.util.Map;
 import java.util.NavigableSet;
 import java.util.Queue;
 import java.util.Set;
-import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
 import org.apache.beam.model.pipeline.v1.RunnerApi.Environment;
@@ -59,6 +58,8 @@ public class GreedyPipelineFuser {
   private final FusedPipeline fusedPipeline;
 
   private GreedyPipelineFuser(Pipeline p) {
+    // Validate that the original pipeline is well-formed.
+    PipelineValidator.validate(p);
     this.pipeline = QueryablePipeline.forPrimitivesIn(p.getComponents());
     Set<PTransformNode> unfusedRootNodes = new LinkedHashSet<>();
     NavigableSet<CollectionConsumer> rootConsumers = new TreeSet<>();
@@ -76,9 +77,9 @@ public class GreedyPipelineFuser {
    *
    * <p>This fuser expects each ExecutableStage to have exactly one input. This means that pipelines
    * must be rooted at Impulse, or other runner-executed primitive transforms, instead of primitive
-   * Read nodes. The utilities in
-   * {@link org.apache.beam.runners.core.construction.JavaReadViaImpulse} can be used to convert
-   * bounded pipelines using the Read primitive.
+   * Read nodes. The utilities in {@link
+   * org.apache.beam.runners.core.construction.JavaReadViaImpulse} can be used to convert bounded
+   * pipelines using the Read primitive.
    */
   public static FusedPipeline fuse(Pipeline p) {
     return new GreedyPipelineFuser(p).fusedPipeline;
@@ -180,14 +181,17 @@ public class GreedyPipelineFuser {
   private DescendantConsumers getRootConsumers(PTransformNode rootNode) {
     checkArgument(
         rootNode.getTransform().getInputsCount() == 0,
-        "%s is not at the root of the graph (consumes %s)",
-        PTransformNode.class.getSimpleName(),
+        "Transform %s is not at the root of the graph (consumes %s)",
+        rootNode.getId(),
         rootNode.getTransform().getInputsMap());
     checkArgument(
         !pipeline.getEnvironment(rootNode).isPresent(),
-        "%s requires all root nodes to be runner-implemented %s primitives",
+        "%s requires all root nodes to be runner-implemented %s primitives, "
+            + "but transform %s executes in environment %s",
         GreedyPipelineFuser.class.getSimpleName(),
-        PTransformTranslation.IMPULSE_TRANSFORM_URN);
+        PTransformTranslation.IMPULSE_TRANSFORM_URN,
+        rootNode.getId(),
+        pipeline.getEnvironment(rootNode));
     Set<PTransformNode> unfused = new HashSet<>();
     unfused.add(rootNode);
     NavigableSet<CollectionConsumer> environmentNodes = new TreeSet<>();
@@ -320,8 +324,9 @@ public class GreedyPipelineFuser {
     }
     // Order sibling sets by their least siblings. This is stable across the order siblings are
     // generated, given stable IDs.
+    @SuppressWarnings("JdkObsolete")
     NavigableSet<NavigableSet<CollectionConsumer>> orderedSiblings =
-        new TreeSet<>(Comparator.comparing(SortedSet::first));
+        new TreeSet<>(Comparator.comparing(NavigableSet::first));
     orderedSiblings.addAll(compatibleConsumers.values());
     return orderedSiblings;
   }

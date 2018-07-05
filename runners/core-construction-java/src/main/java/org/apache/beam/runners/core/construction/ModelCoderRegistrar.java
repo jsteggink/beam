@@ -51,6 +51,7 @@ public class ModelCoderRegistrar implements CoderTranslatorRegistrar {
           .put(VarLongCoder.class, ModelCoders.INT64_CODER_URN)
           .put(IntervalWindowCoder.class, ModelCoders.INTERVAL_WINDOW_CODER_URN)
           .put(IterableCoder.class, ModelCoders.ITERABLE_CODER_URN)
+          .put(Timer.Coder.class, ModelCoders.TIMER_CODER_URN)
           .put(LengthPrefixCoder.class, ModelCoders.LENGTH_PREFIX_CODER_URN)
           .put(GlobalWindow.Coder.class, ModelCoders.GLOBAL_WINDOW_CODER_URN)
           .put(FullWindowedValueCoder.class, ModelCoders.WINDOWED_VALUE_CODER_URN)
@@ -67,6 +68,7 @@ public class ModelCoderRegistrar implements CoderTranslatorRegistrar {
           .put(GlobalWindow.Coder.class, CoderTranslators.atomic(GlobalWindow.Coder.class))
           .put(KvCoder.class, CoderTranslators.kv())
           .put(IterableCoder.class, CoderTranslators.iterable())
+          .put(Timer.Coder.class, CoderTranslators.timer())
           .put(LengthPrefixCoder.class, CoderTranslators.lengthPrefix())
           .put(FullWindowedValueCoder.class, CoderTranslators.fullWindowedValue())
           .build();
@@ -78,6 +80,11 @@ public class ModelCoderRegistrar implements CoderTranslatorRegistrar {
         Coder.class.getSimpleName(),
         CoderTranslator.class.getSimpleName(),
         Sets.difference(BEAM_MODEL_CODER_URNS.keySet(), BEAM_MODEL_CODERS.keySet()));
+    checkState(
+        ModelCoders.urns().equals(BEAM_MODEL_CODER_URNS.values()),
+        "All Model %ss should have an associated java %s",
+        Coder.class.getSimpleName(),
+        Coder.class.getSimpleName());
   }
 
   @Override

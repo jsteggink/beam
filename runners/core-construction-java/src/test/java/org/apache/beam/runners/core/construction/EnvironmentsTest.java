@@ -32,6 +32,7 @@ import org.apache.beam.model.pipeline.v1.RunnerApi.PTransform;
 import org.apache.beam.model.pipeline.v1.RunnerApi.ParDoPayload;
 import org.apache.beam.model.pipeline.v1.RunnerApi.ReadPayload;
 import org.apache.beam.model.pipeline.v1.RunnerApi.WindowIntoPayload;
+import org.apache.beam.sdk.Pipeline;
 import org.apache.beam.sdk.coders.Coder;
 import org.apache.beam.sdk.io.CountingSource;
 import org.apache.beam.sdk.io.Read;
@@ -56,6 +57,7 @@ public class EnvironmentsTest implements Serializable {
   @Test
   public void getEnvironmentUnknownFnType() throws IOException {
     SdkComponents components = SdkComponents.create();
+    components.registerEnvironment(Environment.newBuilder().setUrl("java").build());
     RehydratedComponents rehydratedComponents =
         RehydratedComponents.forComponents(components.toComponents());
     PTransform builder =
@@ -72,6 +74,7 @@ public class EnvironmentsTest implements Serializable {
   @Test
   public void getEnvironmentParDo() throws IOException {
     SdkComponents components = SdkComponents.create();
+    components.registerEnvironment(Environment.newBuilder().setUrl("java").build());
     ParDoPayload payload =
         ParDoTranslation.translateParDo(
             ParDo.of(
@@ -80,6 +83,7 @@ public class EnvironmentsTest implements Serializable {
                       public void process(ProcessContext ctxt) {}
                     })
                 .withOutputTags(new TupleTag<>(), TupleTagList.empty()),
+            Pipeline.create(),
             components);
     RehydratedComponents rehydratedComponents =
         RehydratedComponents.forComponents(components.toComponents());
@@ -103,6 +107,7 @@ public class EnvironmentsTest implements Serializable {
   @Test
   public void getEnvironmentWindowIntoKnown() throws IOException {
     SdkComponents components = SdkComponents.create();
+    components.registerEnvironment(Environment.newBuilder().setUrl("java").build());
     WindowIntoPayload payload =
         WindowIntoPayload.newBuilder()
             .setWindowFn(
@@ -131,6 +136,7 @@ public class EnvironmentsTest implements Serializable {
   @Test
   public void getEnvironmentWindowIntoCustom() throws IOException {
     SdkComponents components = SdkComponents.create();
+    components.registerEnvironment(Environment.newBuilder().setUrl("java").build());
     WindowIntoPayload payload =
         WindowIntoPayload.newBuilder()
             .setWindowFn(
@@ -175,6 +181,7 @@ public class EnvironmentsTest implements Serializable {
   @Test
   public void getEnvironmentRead() throws IOException {
     SdkComponents components = SdkComponents.create();
+    components.registerEnvironment(Environment.newBuilder().setUrl("java").build());
     ReadPayload payload =
         ReadTranslation.toProto(Read.from(CountingSource.unbounded()), components);
     RehydratedComponents rehydratedComponents =
@@ -199,6 +206,7 @@ public class EnvironmentsTest implements Serializable {
   @Test
   public void getEnvironmentCombine() throws IOException {
     SdkComponents components = SdkComponents.create();
+    components.registerEnvironment(Environment.newBuilder().setUrl("java").build());
     CombinePayload payload =
         CombinePayload.newBuilder()
             .setCombineFn(CombineTranslation.toProto(Sum.ofLongs(), components))

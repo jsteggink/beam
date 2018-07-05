@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-apply from: project(":").file("build_rules.gradle")
+apply plugin: org.apache.beam.gradle.BeamModulePlugin
 applyJavaNature()
 
 description = "Apache Beam :: SDKs :: Java :: IO :: Hadoop File System"
@@ -28,7 +28,6 @@ dependencies {
   shadow library.java.jackson_core
   shadow library.java.jackson_databind
   shadow library.java.slf4j_api
-  shadow library.java.findbugs_jsr305
   provided library.java.hadoop_client
   provided library.java.hadoop_common
   provided library.java.hadoop_mapreduce_client_core
@@ -36,6 +35,7 @@ dependencies {
   testCompile project(path: ":beam-sdks-java-core", configuration: "shadowTest")
   testCompile library.java.guava_testlib
   testCompile library.java.hamcrest_core
+  testCompile library.java.hamcrest_library
   testCompile library.java.mockito_core
   testCompile library.java.junit
   testCompile library.java.hadoop_minicluster

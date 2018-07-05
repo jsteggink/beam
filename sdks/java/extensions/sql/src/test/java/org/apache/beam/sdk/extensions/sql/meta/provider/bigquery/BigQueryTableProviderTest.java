@@ -17,21 +17,18 @@
  */
 package org.apache.beam.sdk.extensions.sql.meta.provider.bigquery;
 
-import static org.apache.beam.sdk.extensions.sql.RowSqlTypes.INTEGER;
-import static org.apache.beam.sdk.extensions.sql.RowSqlTypes.VARCHAR;
+import static org.apache.beam.sdk.schemas.Schema.toSchema;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
-import com.google.common.collect.ImmutableList;
+import java.util.stream.Stream;
 import org.apache.beam.sdk.extensions.sql.BeamSqlTable;
-import org.apache.beam.sdk.extensions.sql.meta.Column;
 import org.apache.beam.sdk.extensions.sql.meta.Table;
+import org.apache.beam.sdk.schemas.Schema;
 import org.junit.Test;
 
-/**
- * UnitTest for {@link BigQueryTableProvider}.
- */
+/** UnitTest for {@link BigQueryTableProvider}. */
 public class BigQueryTableProviderTest {
   private BigQueryTableProvider provider = new BigQueryTableProvider();
 
@@ -57,18 +54,11 @@ public class BigQueryTableProviderTest {
         .name(name)
         .comment(name + " table")
         .location("project:dataset.table")
-        .columns(ImmutableList.of(
-            Column.builder()
-                .name("id")
-                .fieldType(INTEGER)
-                .nullable(true)
-                .build(),
-            Column.builder()
-                .name("name")
-                .fieldType(VARCHAR)
-                .nullable(true)
-                .build()
-        ))
+        .schema(
+            Stream.of(
+                    Schema.Field.nullable("id", Schema.FieldType.INT32),
+                    Schema.Field.nullable("name", Schema.FieldType.STRING))
+                .collect(toSchema()))
         .type("bigquery")
         .build();
   }

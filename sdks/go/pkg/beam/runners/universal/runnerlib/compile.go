@@ -30,6 +30,15 @@ import (
 	"github.com/apache/beam/sdks/go/pkg/beam/log"
 )
 
+// IsWorkerCompatibleBinary returns the path to itself and true if running
+// a linux-amd64 binary that can directly be used as a worker binary.
+func IsWorkerCompatibleBinary() (string, bool) {
+	if runtime.GOOS == "linux" && runtime.GOARCH == "amd64" {
+		return os.Args[0], true
+	}
+	return "", false
+}
+
 // BuildTempWorkerBinary creates a local worker binary in the tmp directory
 // for linux/amd64. Caller responsible for deleting the binary.
 func BuildTempWorkerBinary(ctx context.Context) (string, error) {
@@ -45,18 +54,18 @@ func BuildTempWorkerBinary(ctx context.Context) (string, error) {
 //
 //   /Users/herohde/go/src/github.com/apache/beam/sdks/go/pkg/beam/runners/beamexec/main.go (skip: 2)
 // * /Users/herohde/go/src/github.com/apache/beam/sdks/go/examples/wordcount/wordcount.go (skip: 3)
-//   /usr/local/go/src/runtime/proc.go (skip: 4)
-//   /usr/local/go/src/runtime/asm_amd64.s (skip: 5)
+//   /usr/local/go/src/runtime/proc.go (skip: 4)      // not always present
+//   /usr/local/go/src/runtime/asm_amd64.s (skip: 4 or 5)
 func BuildWorkerBinary(ctx context.Context, filename string) error {
 	program := ""
 	for i := 3; ; i++ {
 		_, file, _, ok := runtime.Caller(i)
-		if !ok || strings.HasSuffix(file, "runtime/proc.go") {
+		if !ok || !strings.HasSuffix(file, ".go") || strings.HasSuffix(file, "runtime/proc.go") {
 			break
 		}
 		program = file
 	}
-	if program == "" {
+	if !strings.HasSuffix(program, ".go") {
 		return fmt.Errorf("could not detect user main")
 	}
 

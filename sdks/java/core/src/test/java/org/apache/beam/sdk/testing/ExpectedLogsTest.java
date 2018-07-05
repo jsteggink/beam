@@ -140,7 +140,7 @@ public class ExpectedLogsTest {
 
     // Wait for all the threads to complete.
     for (int i = 0; i < 100; i++) {
-      completionService.take();
+      completionService.take().get();
     }
 
     for (String expected : expectedStrings) {
@@ -157,17 +157,19 @@ public class ExpectedLogsTest {
     expectedLogs = ExpectedLogs.none(ExpectedLogsTest.class);
     final boolean[] evaluateRan = new boolean[1];
 
-    expectedLogs.apply(
-        new Statement() {
-          @Override
-          public void evaluate() throws Throwable {
-            evaluateRan[0] = true;
-            expectedLogs.verifyNotLogged(messageUnexpected);
-            LOG.info(messageExpected);
-            expectedLogs.verifyInfo(messageExpected);
-          }
-        },
-        Description.EMPTY).evaluate();
+    expectedLogs
+        .apply(
+            new Statement() {
+              @Override
+              public void evaluate() throws Throwable {
+                evaluateRan[0] = true;
+                expectedLogs.verifyNotLogged(messageUnexpected);
+                LOG.info(messageExpected);
+                expectedLogs.verifyInfo(messageExpected);
+              }
+            },
+            Description.EMPTY)
+        .evaluate();
     assertTrue(evaluateRan[0]);
     // Verify expectedLogs is cleared.
     expectedLogs.verifyNotLogged(messageExpected);

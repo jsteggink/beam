@@ -40,7 +40,6 @@ import org.apache.beam.sdk.testing.PAssert;
 import org.apache.beam.sdk.testing.TestPipeline;
 import org.apache.beam.sdk.testing.TestStream;
 import org.apache.beam.sdk.testing.UsesTestStream;
-import org.apache.beam.sdk.testing.ValidatesRunner;
 import org.apache.beam.sdk.transforms.windowing.AfterProcessingTime;
 import org.apache.beam.sdk.transforms.windowing.AfterWatermark;
 import org.apache.beam.sdk.transforms.windowing.FixedWindows;
@@ -68,9 +67,8 @@ public class DistinctTest {
 
   @Rule public ExpectedException thrown = ExpectedException.none();
 
-
   @Test
-  @Category(ValidatesRunner.class)
+  @Category(NeedsRunner.class)
   public void testDistinct() {
     List<String> strings = Arrays.asList("k1", "k5", "k5", "k2", "k1", "k2", "k3");
 
@@ -83,7 +81,7 @@ public class DistinctTest {
   }
 
   @Test
-  @Category(ValidatesRunner.class)
+  @Category(NeedsRunner.class)
   public void testDistinctEmpty() {
     List<String> strings = Arrays.asList();
 
@@ -117,7 +115,7 @@ public class DistinctTest {
   }
 
   @Test
-  @Category(ValidatesRunner.class)
+  @Category(NeedsRunner.class)
   public void testDistinctWithRepresentativeValue() {
     List<KV<String, String>> strings =
         Arrays.asList(KV.of("k1", "v1"), KV.of("k1", "v2"), KV.of("k2", "v1"));
@@ -137,7 +135,7 @@ public class DistinctTest {
   @Rule public TestPipeline windowedDistinctPipeline = TestPipeline.create();
 
   @Test
-  @Category({ValidatesRunner.class, UsesTestStream.class})
+  @Category({NeedsRunner.class, UsesTestStream.class})
   public void testWindowedDistinct() {
     Instant base = new Instant(0);
     TestStream<String> values =
@@ -179,7 +177,7 @@ public class DistinctTest {
   @Rule public TestPipeline triggeredDistinctPipeline = TestPipeline.create();
 
   @Test
-  @Category({ValidatesRunner.class, UsesTestStream.class})
+  @Category({NeedsRunner.class, UsesTestStream.class})
   public void testTriggeredDistinct() {
     Instant base = new Instant(0);
     TestStream<String> values =
@@ -215,7 +213,7 @@ public class DistinctTest {
   @Rule public TestPipeline triggeredDistinctRepresentativePipeline = TestPipeline.create();
 
   @Test
-  @Category({ValidatesRunner.class, UsesTestStream.class})
+  @Category({NeedsRunner.class, UsesTestStream.class})
   public void testTriggeredDistinctRepresentativeValues() {
     Instant base = new Instant(0);
     TestStream<KV<Integer, String>> values =
@@ -316,21 +314,23 @@ public class DistinctTest {
             Distinct.withRepresentativeValueFn(String::length)
                 .withRepresentativeType(TypeDescriptor.of(Integer.class)));
 
-    PAssert.that(deduped).satisfies((Iterable<String> strs) -> {
-      Multimap<Integer, String> predupedContents = HashMultimap.create();
-      predupedContents.put(3, "foo");
-      predupedContents.put(4, "foos");
-      predupedContents.put(6, "barbaz");
-      predupedContents.put(6, "bazbar");
+    PAssert.that(deduped)
+        .satisfies(
+            (Iterable<String> strs) -> {
+              Multimap<Integer, String> predupedContents = HashMultimap.create();
+              predupedContents.put(3, "foo");
+              predupedContents.put(4, "foos");
+              predupedContents.put(6, "barbaz");
+              predupedContents.put(6, "bazbar");
 
-      Set<Integer> seenLengths = new HashSet<>();
-      for (String s : strs) {
-        assertThat(predupedContents.values(), hasItem(s));
-        assertThat(seenLengths, not(contains(s.length())));
-        seenLengths.add(s.length());
-      }
-      return null;
-    });
+              Set<Integer> seenLengths = new HashSet<>();
+              for (String s : strs) {
+                assertThat(predupedContents.values(), hasItem(s));
+                assertThat(seenLengths, not(contains(s.length())));
+                seenLengths.add(s.length());
+              }
+              return null;
+            });
 
     p.run();
   }

@@ -60,7 +60,10 @@ public class CreatePCollectionViewTranslation {
       throws IOException {
 
     RunnerApi.PTransform transformProto =
-        PTransformTranslation.toProto(application, Collections.emptyList(), SdkComponents.create());
+        PTransformTranslation.toProto(
+            application,
+            Collections.emptyList(),
+            SdkComponents.create(application.getPipeline().getOptions()));
 
     checkArgument(
         PTransformTranslation.CREATE_VIEW_TRANSFORM_URN.equals(transformProto.getSpec().getUrn()),
@@ -72,20 +75,17 @@ public class CreatePCollectionViewTranslation {
 
     return (PCollectionView<ViewT>)
         SerializableUtils.deserializeFromByteArray(
-            transformProto
-                .getSpec()
-                .getPayload()
-                .toByteArray(),
+            transformProto.getSpec().getPayload().toByteArray(),
             PCollectionView.class.getSimpleName());
   }
 
   /**
-   * @deprecated runners should move away from translating `CreatePCollectionView` and treat this
-   * as part of the translation for a `ParDo` side input.
+   * @deprecated runners should move away from translating `CreatePCollectionView` and treat this as
+   *     part of the translation for a `ParDo` side input.
    */
   @Deprecated
   static class CreatePCollectionViewTranslator
-      extends TransformPayloadTranslator.WithDefaultRehydration<View.CreatePCollectionView<?, ?>> {
+      implements TransformPayloadTranslator<View.CreatePCollectionView<?, ?>> {
     @Override
     public String getUrn(View.CreatePCollectionView<?, ?> transform) {
       return PTransformTranslation.CREATE_VIEW_TRANSFORM_URN;
@@ -107,8 +107,8 @@ public class CreatePCollectionViewTranslation {
   /**
    * Registers {@link CreatePCollectionViewTranslator}.
    *
-   * @deprecated runners should move away from translating `CreatePCollectionView` and treat this
-   * as part of the translation for a `ParDo` side input.
+   * @deprecated runners should move away from translating `CreatePCollectionView` and treat this as
+   *     part of the translation for a `ParDo` side input.
    */
   @AutoService(TransformPayloadTranslatorRegistrar.class)
   @Deprecated
@@ -118,11 +118,6 @@ public class CreatePCollectionViewTranslation {
         getTransformPayloadTranslators() {
       return Collections.singletonMap(
           View.CreatePCollectionView.class, new CreatePCollectionViewTranslator());
-    }
-
-    @Override
-    public Map<String, TransformPayloadTranslator> getTransformRehydrators() {
-      return Collections.emptyMap();
     }
   }
 }

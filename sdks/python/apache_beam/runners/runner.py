@@ -43,12 +43,14 @@ _TEST_RUNNER_PATH = 'apache_beam.runners.test.'
 _PYTHON_RPC_DIRECT_RUNNER = (
     'apache_beam.runners.experimental.python_rpc_direct.'
     'python_rpc_direct_runner.')
+_PORTABLE_RUNNER_PATH = ('apache_beam.runners.portability.portable_runner.')
 
 _KNOWN_PYTHON_RPC_DIRECT_RUNNER = ('PythonRPCDirectRunner',)
 _KNOWN_DIRECT_RUNNERS = ('DirectRunner', 'BundleBasedDirectRunner',
                          'SwitchingDirectRunner')
 _KNOWN_DATAFLOW_RUNNERS = ('DataflowRunner',)
 _KNOWN_TEST_RUNNERS = ('TestDataflowRunner',)
+_KNOWN_PORTABLE_RUNNERS = ('PortableRunner',)
 
 _RUNNER_MAP = {}
 _RUNNER_MAP.update(_get_runner_map(_KNOWN_DIRECT_RUNNERS,
@@ -59,9 +61,12 @@ _RUNNER_MAP.update(_get_runner_map(_KNOWN_PYTHON_RPC_DIRECT_RUNNER,
                                    _PYTHON_RPC_DIRECT_RUNNER))
 _RUNNER_MAP.update(_get_runner_map(_KNOWN_TEST_RUNNERS,
                                    _TEST_RUNNER_PATH))
+_RUNNER_MAP.update(_get_runner_map(_KNOWN_PORTABLE_RUNNERS,
+                                   _PORTABLE_RUNNER_PATH))
 
 _ALL_KNOWN_RUNNERS = (
-    _KNOWN_DIRECT_RUNNERS + _KNOWN_DATAFLOW_RUNNERS + _KNOWN_TEST_RUNNERS)
+    _KNOWN_DIRECT_RUNNERS + _KNOWN_DATAFLOW_RUNNERS + _KNOWN_TEST_RUNNERS +
+    _KNOWN_PORTABLE_RUNNERS)
 
 
 def create_runner(runner_name):
@@ -277,21 +282,13 @@ class PValueCache(object):
     else:
       tag = tag_or_value
     self._cache[
-        self.to_cache_key(transform, tag)] = [value, transform.refcounts[tag]]
+        self.to_cache_key(transform, tag)] = value
 
-  def get_pvalue(self, pvalue, decref=True):
+  def get_pvalue(self, pvalue):
     """Gets the value associated with a PValue from the cache."""
     self._ensure_pvalue_has_real_producer(pvalue)
     try:
-      value_with_refcount = self._cache[self.key(pvalue)]
-      if decref:
-        value_with_refcount[1] -= 1
-        logging.debug('PValue computed by %s (tag %s): refcount: %d => %d',
-                      pvalue.real_producer.full_label, self.key(pvalue)[1],
-                      value_with_refcount[1] + 1, value_with_refcount[1])
-        if value_with_refcount[1] <= 0:
-          self.clear_pvalue(pvalue)
-      return value_with_refcount[0]
+      return self._cache[self.key(pvalue)]
     except KeyError:
       if (pvalue.tag is not None
           and self.to_cache_key(pvalue.real_producer, None) in self._cache):
@@ -301,8 +298,8 @@ class PValueCache(object):
       else:
         raise
 
-  def get_unwindowed_pvalue(self, pvalue, decref=True):
-    return [v.value for v in self.get_pvalue(pvalue, decref)]
+  def get_unwindowed_pvalue(self, pvalue):
+    return [v.value for v in self.get_pvalue(pvalue)]
 
   def clear_pvalue(self, pvalue):
     """Removes a PValue from the cache."""

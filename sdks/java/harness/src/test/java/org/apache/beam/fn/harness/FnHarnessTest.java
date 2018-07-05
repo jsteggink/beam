@@ -48,16 +48,17 @@ import org.junit.runners.JUnit4;
 public class FnHarnessTest {
   private static final BeamFnApi.InstructionRequest INSTRUCTION_REQUEST =
       BeamFnApi.InstructionRequest.newBuilder()
-      .setInstructionId("999L")
-      .setRegister(BeamFnApi.RegisterRequest.getDefaultInstance())
-      .build();
+          .setInstructionId("999L")
+          .setRegister(BeamFnApi.RegisterRequest.getDefaultInstance())
+          .build();
   private static final BeamFnApi.InstructionResponse INSTRUCTION_RESPONSE =
       BeamFnApi.InstructionResponse.newBuilder()
-      .setInstructionId("999L")
-      .setRegister(BeamFnApi.RegisterResponse.getDefaultInstance())
-      .build();
+          .setInstructionId("999L")
+          .setRegister(BeamFnApi.RegisterResponse.getDefaultInstance())
+          .build();
 
-  @Test
+  @Test(timeout = 10 * 1000)
+  @SuppressWarnings("FutureReturnValueIgnored") // failure will cause test to timeout.
   public void testLaunchFnHarnessAndTeardownCleanly() throws Exception {
     PipelineOptions options = PipelineOptionsFactory.create();
 
@@ -109,16 +110,16 @@ public class FnHarnessTest {
       Server controlServer = ServerBuilder.forPort(0).addService(controlService).build();
       controlServer.start();
       try {
-        Endpoints.ApiServiceDescriptor loggingDescriptor = Endpoints.ApiServiceDescriptor
-            .newBuilder()
-            .setUrl("localhost:" + loggingServer.getPort())
-            .build();
-        Endpoints.ApiServiceDescriptor controlDescriptor = Endpoints.ApiServiceDescriptor
-            .newBuilder()
-            .setUrl("localhost:" + controlServer.getPort())
-            .build();
+        Endpoints.ApiServiceDescriptor loggingDescriptor =
+            Endpoints.ApiServiceDescriptor.newBuilder()
+                .setUrl("localhost:" + loggingServer.getPort())
+                .build();
+        Endpoints.ApiServiceDescriptor controlDescriptor =
+            Endpoints.ApiServiceDescriptor.newBuilder()
+                .setUrl("localhost:" + controlServer.getPort())
+                .build();
 
-        FnHarness.main(options, loggingDescriptor, controlDescriptor);
+        FnHarness.main("id", options, loggingDescriptor, controlDescriptor);
         assertThat(instructionResponses, contains(INSTRUCTION_RESPONSE));
       } finally {
         controlServer.shutdownNow();
@@ -128,4 +129,3 @@ public class FnHarnessTest {
     }
   }
 }
-

@@ -22,41 +22,34 @@ import static org.junit.Assert.assertEquals;
 
 import com.google.common.collect.ImmutableList;
 import java.util.Arrays;
-import java.util.List;
 import org.apache.beam.sdk.schemas.Schema;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
 
-/**
- * Unit tests for {@link DefaultRowTypeFactory}.
- */
+/** Unit tests for {@link DefaultSchemaFactory}. */
 public class DefaultSchemaFactoryTest {
 
-  /**
-   * Test class without supported coder.
-   */
-  private static class UnsupportedClass {
-  }
+  /** Test class without supported coder. */
+  private static class UnsupportedClass {}
 
-  private static final List<FieldValueGetter> GETTERS = ImmutableList
-      .<FieldValueGetter>builder()
-      .add(getter("byteGetter", Byte.class))
-      .add(getter("integerGetter", Integer.class))
-      .add(getter("longGetter", Long.class))
-      .add(getter("doubleGetter", Double.class))
-      .add(getter("booleanGetter", Boolean.class))
-      .add(getter("stringGetter", String.class))
-      .build();
+  private static final ImmutableList<FieldValueGetter> GETTERS =
+      ImmutableList.<FieldValueGetter>builder()
+          .add(getter("byteGetter", Byte.class))
+          .add(getter("integerGetter", Integer.class))
+          .add(getter("longGetter", Long.class))
+          .add(getter("doubleGetter", Double.class))
+          .add(getter("booleanGetter", Boolean.class))
+          .add(getter("stringGetter", String.class))
+          .build();
 
-  @Rule
-  public ExpectedException thrown = ExpectedException.none();
+  @Rule public ExpectedException thrown = ExpectedException.none();
 
   @Test
   public void testContainsCorrectFields() throws Exception {
-    DefaultRowTypeFactory factory = new DefaultRowTypeFactory();
+    DefaultSchemaFactory factory = new DefaultSchemaFactory();
 
-    Schema schema = factory.createRowType(GETTERS);
+    Schema schema = factory.createSchema(GETTERS);
 
     assertEquals(GETTERS.size(), schema.getFieldCount());
     assertEquals(
@@ -74,9 +67,9 @@ public class DefaultSchemaFactoryTest {
   public void testThrowsForUnsupportedTypes() throws Exception {
     thrown.expect(UnsupportedOperationException.class);
 
-    DefaultRowTypeFactory factory = new DefaultRowTypeFactory();
+    DefaultSchemaFactory factory = new DefaultSchemaFactory();
 
-    factory.createRowType(
+    factory.createSchema(
         Arrays.<FieldValueGetter>asList(getter("unsupportedGetter", UnsupportedClass.class)));
   }
 

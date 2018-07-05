@@ -43,9 +43,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-/**
- * Tests to validate HadoopInputFormatIO for embedded Cassandra instance.
- */
+/** Tests to validate HadoopInputFormatIO for embedded Cassandra instance. */
 @RunWith(JUnit4.class)
 public class HIFIOWithEmbeddedCassandraTest implements Serializable {
   private static final long serialVersionUID = 1L;
@@ -63,24 +61,26 @@ public class HIFIOWithEmbeddedCassandraTest implements Serializable {
   private static transient Cluster cluster;
   private static transient Session session;
   private static final long TEST_DATA_ROW_COUNT = 10L;
-  private static EmbeddedCassandraService cassandra = new EmbeddedCassandraService();
+  private static final EmbeddedCassandraService cassandra = new EmbeddedCassandraService();
 
-  @Rule
-  public final transient TestPipeline p = TestPipeline.create();
+  @Rule public final transient TestPipeline p = TestPipeline.create();
 
   /**
    * Test to read data from embedded Cassandra instance and verify whether data is read
    * successfully.
+   *
    * @throws Exception
    */
   @Test
-  public void testHIFReadForCassandra() throws Exception {
+  public void testHIFReadForCassandra() {
     // Expected hashcode is evaluated during insertion time one time and hardcoded here.
     String expectedHashCode = "1b9780833cce000138b9afa25ba63486";
     Configuration conf = getConfiguration();
     PCollection<KV<Long, String>> cassandraData =
-        p.apply(HadoopInputFormatIO.<Long, String>read().withConfiguration(conf)
-            .withValueTranslation(myValueTranslate));
+        p.apply(
+            HadoopInputFormatIO.<Long, String>read()
+                .withConfiguration(conf)
+                .withValueTranslation(myValueTranslate));
     // Verify the count of data retrieved from Cassandra matches expected count.
     PAssert.thatSingleton(cassandraData.apply("Count", Count.globally()))
         .isEqualTo(TEST_DATA_ROW_COUNT);
@@ -92,28 +92,35 @@ public class HIFIOWithEmbeddedCassandraTest implements Serializable {
     p.run().waitUntilFinish();
   }
 
-  SimpleFunction<Row, String> myValueTranslate = new SimpleFunction<Row, String>() {
-    @Override
-    public String apply(Row input) {
-      String scientistRecord = input.getInt("id") + "|" + input.getString("scientist");
-      return scientistRecord;
-    }
-  };
+  private final SimpleFunction<Row, String> myValueTranslate =
+      new SimpleFunction<Row, String>() {
+        @Override
+        public String apply(Row input) {
+          return input.getInt("id") + "|" + input.getString("scientist");
+        }
+      };
 
   /**
    * Test to read data from embedded Cassandra instance based on query and verify whether data is
    * read successfully.
    */
   @Test
-  public void testHIFReadForCassandraQuery() throws Exception {
+  public void testHIFReadForCassandraQuery() {
     Long expectedCount = 1L;
     String expectedChecksum = "f11caabc7a9fc170e22b41218749166c";
     Configuration conf = getConfiguration();
-    conf.set("cassandra.input.cql", "select * from " + CASSANDRA_KEYSPACE + "." + CASSANDRA_TABLE
-        + " where token(id) > ? and token(id) <= ? and scientist='Faraday1' allow filtering");
+    conf.set(
+        "cassandra.input.cql",
+        "select * from "
+            + CASSANDRA_KEYSPACE
+            + "."
+            + CASSANDRA_TABLE
+            + " where token(id) > ? and token(id) <= ? and scientist='Faraday1' allow filtering");
     PCollection<KV<Long, String>> cassandraData =
-        p.apply(HadoopInputFormatIO.<Long, String>read().withConfiguration(conf)
-            .withValueTranslation(myValueTranslate));
+        p.apply(
+            HadoopInputFormatIO.<Long, String>read()
+                .withConfiguration(conf)
+                .withValueTranslation(myValueTranslate));
     // Verify the count of data retrieved from Cassandra matches expected count.
     PAssert.thatSingleton(cassandraData.apply("Count", Count.globally())).isEqualTo(expectedCount);
     PCollection<String> textValues = cassandraData.apply(Values.create());
@@ -129,30 +136,40 @@ public class HIFIOWithEmbeddedCassandraTest implements Serializable {
    * class name, key class, value class are thrift port, thrift address, partitioner class, keyspace
    * and columnfamily name
    */
-  public Configuration getConfiguration() {
+  private Configuration getConfiguration() {
     Configuration conf = new Configuration();
     conf.set(CASSANDRA_THRIFT_PORT_PROPERTY, CASSANDRA_PORT);
     conf.set(CASSANDRA_THRIFT_ADDRESS_PROPERTY, CASSANDRA_HOST);
     conf.set(CASSANDRA_PARTITIONER_CLASS_PROPERTY, CASSANDRA_PARTITIONER_CLASS_VALUE);
     conf.set(CASSANDRA_KEYSPACE_PROPERTY, CASSANDRA_KEYSPACE);
     conf.set(CASSANDRA_COLUMNFAMILY_PROPERTY, CASSANDRA_TABLE);
-    conf.setClass("mapreduce.job.inputformat.class",
-        org.apache.cassandra.hadoop.cql3.CqlInputFormat.class, InputFormat.class);
+    conf.setClass(
+        "mapreduce.job.inputformat.class",
+        org.apache.cassandra.hadoop.cql3.CqlInputFormat.class,
+        InputFormat.class);
     conf.setClass("key.class", java.lang.Long.class, Object.class);
-    conf.setClass("value.class", com.datastax.driver.core.Row.class, Object.class);
+    conf.setClass("value.class", Row.class, Object.class);
     return conf;
   }
 
-  public static void createCassandraData() throws Exception {
+  private static void createCassandraData() {
     session.execute("DROP KEYSPACE IF EXISTS " + CASSANDRA_KEYSPACE);
-    session.execute("CREATE KEYSPACE " + CASSANDRA_KEYSPACE
-        + " WITH REPLICATION = {'class':'SimpleStrategy', 'replication_factor':1};");
+    session.execute(
+        "CREATE KEYSPACE "
+            + CASSANDRA_KEYSPACE
+            + " WITH REPLICATION = {'class':'SimpleStrategy', 'replication_factor':1};");
     session.execute("USE " + CASSANDRA_KEYSPACE);
-    session.execute("CREATE TABLE " + CASSANDRA_TABLE
-        + "(id int, scientist text, PRIMARY KEY(id));");
+    session.execute(
+        "CREATE TABLE " + CASSANDRA_TABLE + "(id int, scientist text, PRIMARY KEY(id));");
     for (int i = 0; i < TEST_DATA_ROW_COUNT; i++) {
-      session.execute("INSERT INTO " + CASSANDRA_TABLE + "(id, scientist) values(" + i
-          + ", 'Faraday" + i + "');");
+      session.execute(
+          "INSERT INTO "
+              + CASSANDRA_TABLE
+              + "(id, scientist) values("
+              + i
+              + ", 'Faraday"
+              + i
+              + "');");
     }
   }
 
@@ -166,26 +183,29 @@ public class HIFIOWithEmbeddedCassandraTest implements Serializable {
     // This defaults to 5 s.  Increase to a minute.
     socketOptions.setConnectTimeoutMillis(60 * 1000);
     cluster =
-        Cluster.builder().addContactPoint(CASSANDRA_HOST).withClusterName("beam")
-            .withSocketOptions(socketOptions).build();
+        Cluster.builder()
+            .addContactPoint(CASSANDRA_HOST)
+            .withClusterName("beam")
+            .withSocketOptions(socketOptions)
+            .build();
     session = cluster.connect();
     createCassandraData();
   }
 
   @AfterClass
-  public static void stopEmbeddedCassandra() throws Exception {
+  public static void stopEmbeddedCassandra() {
     session.close();
     cluster.close();
   }
 
-  /**
-   * POJO class for scientist data.
-   */
+  /** POJO class for scientist data. */
   @Table(name = CASSANDRA_TABLE, keyspace = CASSANDRA_KEYSPACE)
   public static class Scientist implements Serializable {
     private static final long serialVersionUID = 1L;
+
     @Column(name = "scientist")
     private String name;
+
     @Column(name = "id")
     private int id;
 
@@ -205,6 +225,7 @@ public class HIFIOWithEmbeddedCassandraTest implements Serializable {
       this.id = id;
     }
 
+    @Override
     public String toString() {
       return id + ":" + name;
     }

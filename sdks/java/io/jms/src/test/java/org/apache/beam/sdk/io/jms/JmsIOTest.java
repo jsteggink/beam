@@ -25,6 +25,7 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import com.google.common.base.Throwables;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.List;
@@ -58,9 +59,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-/**
- * Tests of {@link JmsIO}.
- */
+/** Tests of {@link JmsIO}. */
 @RunWith(JUnit4.class)
 public class JmsIOTest {
 
@@ -75,8 +74,7 @@ public class JmsIOTest {
   private ConnectionFactory connectionFactory;
   private ConnectionFactory connectionFactoryWithoutPrefetch;
 
-  @Rule
-  public final transient TestPipeline pipeline = TestPipeline.create();
+  @Rule public final transient TestPipeline pipeline = TestPipeline.create();
 
   @Before
   public void startBroker() throws Exception {
@@ -94,7 +92,7 @@ public class JmsIOTest {
     // This user has users privilege (able to browse, consume, produce, list destinations)
     users.add(new AuthenticationUser(USERNAME, PASSWORD, "users"));
     SimpleAuthenticationPlugin plugin = new SimpleAuthenticationPlugin(users);
-    BrokerPlugin[] plugins = new BrokerPlugin[]{ plugin };
+    BrokerPlugin[] plugins = new BrokerPlugin[] {plugin};
     broker.setPlugins(plugins);
 
     broker.start();
@@ -121,10 +119,7 @@ public class JmsIOTest {
 
   @Test
   public void testAuthenticationRequired() {
-    pipeline.apply(
-        JmsIO.read()
-            .withConnectionFactory(connectionFactory)
-            .withQueue(QUEUE));
+    pipeline.apply(JmsIO.read().withConnectionFactory(connectionFactory).withQueue(QUEUE));
 
     runPipelineExpectingJmsConnectException("User name [null] or password is invalid.");
   }
@@ -138,8 +133,7 @@ public class JmsIOTest {
             .withUsername(USERNAME)
             .withPassword("BAD"));
 
-    runPipelineExpectingJmsConnectException(
-        "User name [" + USERNAME + "] or password is invalid.");
+    runPipelineExpectingJmsConnectException("User name [" + USERNAME + "] or password is invalid.");
   }
 
   @Test
@@ -161,13 +155,14 @@ public class JmsIOTest {
     connection.close();
 
     // read from the queue
-    PCollection<JmsRecord> output = pipeline.apply(
-        JmsIO.read()
-            .withConnectionFactory(connectionFactory)
-            .withQueue(QUEUE)
-            .withUsername(USERNAME)
-            .withPassword(PASSWORD)
-            .withMaxNumRecords(5));
+    PCollection<JmsRecord> output =
+        pipeline.apply(
+            JmsIO.read()
+                .withConnectionFactory(connectionFactory)
+                .withQueue(QUEUE)
+                .withUsername(USERNAME)
+                .withPassword(PASSWORD)
+                .withMaxNumRecords(5));
 
     PAssert.thatSingleton(output.apply("Count", Count.globally())).isEqualTo(5L);
     pipeline.run();
@@ -187,27 +182,25 @@ public class JmsIOTest {
     Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
     MessageProducer producer = session.createProducer(session.createQueue(QUEUE));
     BytesMessage message = session.createBytesMessage();
-    message.writeBytes("This Is A Test".getBytes());
+    message.writeBytes("This Is A Test".getBytes(StandardCharsets.UTF_8));
     producer.send(message);
     producer.close();
     session.close();
     connection.close();
 
     // read from the queue
-    PCollection<String> output = pipeline.apply(
-        JmsIO.<String>readMessage()
-            .withConnectionFactory(connectionFactory)
-            .withQueue(QUEUE)
-            .withUsername(USERNAME)
-            .withPassword(PASSWORD)
-            .withMaxNumRecords(1)
-            .withCoder(SerializableCoder.of(String.class))
-            .withMessageMapper(new BytesMessageToStringMessageMapper())
-    );
+    PCollection<String> output =
+        pipeline.apply(
+            JmsIO.<String>readMessage()
+                .withConnectionFactory(connectionFactory)
+                .withQueue(QUEUE)
+                .withUsername(USERNAME)
+                .withPassword(PASSWORD)
+                .withMaxNumRecords(1)
+                .withCoder(SerializableCoder.of(String.class))
+                .withMessageMapper(new BytesMessageToStringMessageMapper()));
 
-    PAssert
-        .thatSingleton(output.apply("Count", Count.<String>globally()))
-        .isEqualTo(1L);
+    PAssert.thatSingleton(output.apply("Count", Count.<String>globally())).isEqualTo(1L);
     pipeline.run();
 
     connection = connectionFactory.createConnection(USERNAME, PASSWORD);
@@ -224,12 +217,14 @@ public class JmsIOTest {
     for (int i = 0; i < 100; i++) {
       data.add("Message " + i);
     }
-    pipeline.apply(Create.of(data))
-        .apply(JmsIO.write()
-            .withConnectionFactory(connectionFactory)
-            .withQueue(QUEUE)
-            .withUsername(USERNAME)
-            .withPassword(PASSWORD));
+    pipeline
+        .apply(Create.of(data))
+        .apply(
+            JmsIO.write()
+                .withConnectionFactory(connectionFactory)
+                .withQueue(QUEUE)
+                .withUsername(USERNAME)
+                .withPassword(PASSWORD));
 
     pipeline.run();
 
@@ -250,8 +245,7 @@ public class JmsIOTest {
     PipelineOptions pipelineOptions = PipelineOptionsFactory.create();
     int desiredNumSplits = 5;
     JmsIO.UnboundedJmsSource initialSource = new JmsIO.UnboundedJmsSource(read);
-    List<JmsIO.UnboundedJmsSource> splits = initialSource.split(desiredNumSplits,
-        pipelineOptions);
+    List<JmsIO.UnboundedJmsSource> splits = initialSource.split(desiredNumSplits, pipelineOptions);
     // in the case of a queue, we have concurrent consumers by default, so the initial number
     // splits is equal to the desired number of splits
     assertEquals(desiredNumSplits, splits.size());
@@ -263,8 +257,7 @@ public class JmsIOTest {
     PipelineOptions pipelineOptions = PipelineOptionsFactory.create();
     int desiredNumSplits = 5;
     JmsIO.UnboundedJmsSource initialSource = new JmsIO.UnboundedJmsSource(read);
-    List<JmsIO.UnboundedJmsSource> splits = initialSource.split(desiredNumSplits,
-        pipelineOptions);
+    List<JmsIO.UnboundedJmsSource> splits = initialSource.split(desiredNumSplits, pipelineOptions);
     // in the case of a topic, we can have only an unique subscriber on the topic per pipeline
     // else it means we can have duplicate messages (all subscribers on the topic receive every
     // message).
@@ -291,11 +284,12 @@ public class JmsIOTest {
     session.close();
     connection.close();
 
-    JmsIO.Read spec = JmsIO.read()
-        .withConnectionFactory(connectionFactoryWithoutPrefetch)
-        .withUsername(USERNAME)
-        .withPassword(PASSWORD)
-        .withQueue(QUEUE);
+    JmsIO.Read spec =
+        JmsIO.read()
+            .withConnectionFactory(connectionFactoryWithoutPrefetch)
+            .withUsername(USERNAME)
+            .withPassword(PASSWORD)
+            .withQueue(QUEUE);
     JmsIO.UnboundedJmsSource source = new JmsIO.UnboundedJmsSource(spec);
     JmsIO.UnboundedJmsReader reader = source.createReader(null, null);
 
@@ -344,18 +338,16 @@ public class JmsIOTest {
     return count;
   }
 
-  /**
-   * A test class that maps a {@link javax.jms.BytesMessage} into a {@link String}.
-   */
+  /** A test class that maps a {@link javax.jms.BytesMessage} into a {@link String}. */
   public static class BytesMessageToStringMessageMapper implements JmsIO.MessageMapper<String> {
 
-    @Override public String mapMessage(Message message) throws Exception {
+    @Override
+    public String mapMessage(Message message) throws Exception {
       BytesMessage bytesMessage = (BytesMessage) message;
 
       byte[] bytes = new byte[(int) bytesMessage.getBodyLength()];
 
-      return new String(bytes);
+      return new String(bytes, StandardCharsets.UTF_8);
     }
   }
-
 }

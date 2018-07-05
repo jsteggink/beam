@@ -887,8 +887,7 @@ public class GreedyStageFuserTest {
     PTransformNode readNode = PipelineNode.pTransform("read", readTransform);
     PCollectionNode readOutput = getOnlyElement(p.getOutputPCollections(readNode));
     ExecutableStage subgraph =
-        GreedyStageFuser.forGrpcPortRead(
-            p, impulseOutputNode, ImmutableSet.of(readNode));
+        GreedyStageFuser.forGrpcPortRead(p, impulseOutputNode, ImmutableSet.of(readNode));
     assertThat(subgraph.getOutputPCollections(), contains(readOutput));
     assertThat(subgraph, hasSubtransforms(readNode.getId()));
   }
@@ -898,6 +897,7 @@ public class GreedyStageFuserTest {
     Environment env = Environment.newBuilder().setUrl("common").build();
     PTransform readTransform =
         PTransform.newBuilder()
+            .setUniqueName("read")
             .putInputs("input", "impulse.out")
             .putOutputs("output", "read.out")
             .setSpec(
@@ -912,6 +912,7 @@ public class GreedyStageFuserTest {
 
     PTransform parDoTransform =
         PTransform.newBuilder()
+            .setUniqueName("parDo")
             .putInputs("input", "read.out")
             .putInputs("side_input", "side_read.out")
             .putOutputs("output", "parDo.out")
@@ -937,6 +938,7 @@ public class GreedyStageFuserTest {
                 .putTransforms(
                     "side_read",
                     PTransform.newBuilder()
+                        .setUniqueName("side_read")
                         .putInputs("input", "impulse.out")
                         .putOutputs("output", "side_read.out")
                         .build())
@@ -960,6 +962,71 @@ public class GreedyStageFuserTest {
             PipelineNode.pCollection("side_read.out", sideInputPCollection));
     assertThat(subgraph.getSideInputs(), contains(sideInputRef));
     assertThat(subgraph.getOutputPCollections(), emptyIterable());
+  }
+
+  @Test
+  public void executableStageProducingSideInputMaterializesIt() {
+    // impulse -- ParDo(createSide)
+    //         \_ ParDo(processMain) with side input from createSide
+    // The ExecutableStage executing createSide must have an output.
+    Environment env = Environment.newBuilder().setUrl("common").build();
+    PTransform impulse =
+        PTransform.newBuilder()
+            .setUniqueName("impulse")
+            .putOutputs("output", "impulsePC")
+            .setSpec(FunctionSpec.newBuilder().setUrn(PTransformTranslation.IMPULSE_TRANSFORM_URN))
+            .build();
+    PTransform createSide =
+        PTransform.newBuilder()
+            .setUniqueName("createSide")
+            .putInputs("input", "impulsePC")
+            .putOutputs("output", "sidePC")
+            .setSpec(
+                FunctionSpec.newBuilder()
+                    .setUrn(PTransformTranslation.PAR_DO_TRANSFORM_URN)
+                    .setPayload(
+                        ParDoPayload.newBuilder()
+                            .setDoFn(SdkFunctionSpec.newBuilder().setEnvironmentId("common"))
+                            .build()
+                            .toByteString()))
+            .build();
+    PTransform processMain =
+        PTransform.newBuilder()
+            .setUniqueName("processMain")
+            .putInputs("main", "impulsePC")
+            .putInputs("side", "sidePC")
+            .setSpec(
+                FunctionSpec.newBuilder()
+                    .setUrn(PTransformTranslation.PAR_DO_TRANSFORM_URN)
+                    .setPayload(
+                        ParDoPayload.newBuilder()
+                            .setDoFn(SdkFunctionSpec.newBuilder().setEnvironmentId("common"))
+                            .putSideInputs("side", SideInput.getDefaultInstance())
+                            .build()
+                            .toByteString()))
+            .build();
+
+    PCollection sidePC = PCollection.newBuilder().setUniqueName("sidePC").build();
+    PCollection impulsePC = PCollection.newBuilder().setUniqueName("impulsePC").build();
+    QueryablePipeline p =
+        QueryablePipeline.forPrimitivesIn(
+            partialComponents
+                .toBuilder()
+                .putTransforms("impulse", impulse)
+                .putTransforms("createSide", createSide)
+                .putTransforms("processMain", processMain)
+                .putPcollections("impulsePC", impulsePC)
+                .putPcollections("sidePC", sidePC)
+                .putEnvironments("common", env)
+                .build());
+
+    PCollectionNode impulseOutput =
+        getOnlyElement(p.getOutputPCollections(PipelineNode.pTransform("impulse", impulse)));
+    ExecutableStage subgraph =
+        GreedyStageFuser.forGrpcPortRead(
+            p, impulseOutput, ImmutableSet.of(PipelineNode.pTransform("createSide", createSide)));
+    assertThat(
+        subgraph.getOutputPCollections(), contains(PipelineNode.pCollection("sidePC", sidePC)));
   }
 
   @Test
@@ -1007,8 +1074,7 @@ public class GreedyStageFuserTest {
     PTransformNode readNode = PipelineNode.pTransform("read", readTransform);
     PCollectionNode readOutput = getOnlyElement(p.getOutputPCollections(readNode));
     ExecutableStage subgraph =
-        GreedyStageFuser.forGrpcPortRead(
-            p, impulseOutputNode, ImmutableSet.of(readNode));
+        GreedyStageFuser.forGrpcPortRead(p, impulseOutputNode, ImmutableSet.of(readNode));
     assertThat(subgraph.getOutputPCollections(), contains(readOutput));
     assertThat(subgraph, hasSubtransforms(readNode.getId()));
   }
@@ -1019,19 +1085,20 @@ public class GreedyStageFuserTest {
       @Override
       protected boolean matchesSafely(ExecutableStage executableStage) {
         // NOTE: Transform names must be unique, so it's fine to throw here if this does not hold.
-        Set<String> stageTransforms = executableStage.getTransforms().stream()
-            .map(PTransformNode::getId)
-            .collect(Collectors.toSet());
+        Set<String> stageTransforms =
+            executableStage
+                .getTransforms()
+                .stream()
+                .map(PTransformNode::getId)
+                .collect(Collectors.toSet());
         return stageTransforms.containsAll(expectedTransforms)
             && expectedTransforms.containsAll(stageTransforms);
       }
 
       @Override
       public void describeTo(Description description) {
-        description.appendText(
-            "ExecutableStage with subtransform ids: " + expectedTransforms);
+        description.appendText("ExecutableStage with subtransform ids: " + expectedTransforms);
       }
     };
   }
-
 }

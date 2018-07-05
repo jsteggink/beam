@@ -28,6 +28,7 @@ import com.google.common.base.Strings;
 import com.google.common.collect.Lists;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
+import javax.annotation.Nullable;
 import org.apache.beam.sdk.Pipeline;
 import org.apache.beam.sdk.coders.Coder;
 import org.apache.beam.sdk.coders.IterableCoder;
@@ -87,8 +88,7 @@ class BatchLoads<DestinationT>
   // save on the cost of shuffling some of this data.
   // Keep in mind that specific runners may decide to run multiple bundles in parallel, based on
   // their own policy.
-  @VisibleForTesting
-  static final int DEFAULT_MAX_NUM_WRITERS_PER_BUNDLE = 20;
+  @VisibleForTesting static final int DEFAULT_MAX_NUM_WRITERS_PER_BUNDLE = 20;
 
   @VisibleForTesting
   // Maximum number of files in a single partition.
@@ -127,12 +127,16 @@ class BatchLoads<DestinationT>
   private int numFileShards;
   private Duration triggeringFrequency;
   private ValueProvider<String> customGcsTempLocation;
+  private ValueProvider<String> loadJobProjectId;
 
-  BatchLoads(WriteDisposition writeDisposition, CreateDisposition createDisposition,
-             boolean singletonTable,
-             DynamicDestinations<?, DestinationT> dynamicDestinations,
-             Coder<DestinationT> destinationCoder,
-             ValueProvider<String> customGcsTempLocation) {
+  BatchLoads(
+      WriteDisposition writeDisposition,
+      CreateDisposition createDisposition,
+      boolean singletonTable,
+      DynamicDestinations<?, DestinationT> dynamicDestinations,
+      Coder<DestinationT> destinationCoder,
+      ValueProvider<String> customGcsTempLocation,
+      @Nullable ValueProvider<String> loadJobProjectId) {
     bigQueryServices = new BigQueryServicesImpl();
     this.writeDisposition = writeDisposition;
     this.createDisposition = createDisposition;
@@ -144,6 +148,7 @@ class BatchLoads<DestinationT>
     this.numFileShards = DEFAULT_NUM_FILE_SHARDS;
     this.triggeringFrequency = null;
     this.customGcsTempLocation = customGcsTempLocation;
+    this.loadJobProjectId = loadJobProjectId;
   }
 
   void setTestServices(BigQueryServices bigQueryServices) {
@@ -507,7 +512,8 @@ class BatchLoads<DestinationT>
                 WriteDisposition.WRITE_EMPTY,
                 CreateDisposition.CREATE_IF_NEEDED,
                 sideInputs,
-                dynamicDestinations));
+                dynamicDestinations,
+                loadJobProjectId));
   }
 
   // In the case where the files fit into a single load job, there's no need to write temporary
@@ -536,7 +542,8 @@ class BatchLoads<DestinationT>
                 writeDisposition,
                 createDisposition,
                 sideInputs,
-                dynamicDestinations));
+                dynamicDestinations,
+                loadJobProjectId));
   }
 
   private WriteResult writeResult(Pipeline p) {
