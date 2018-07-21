@@ -104,6 +104,7 @@ public class RabbitMqIO {
   public static Read read() {
     return new AutoValue_RabbitMqIO_Read.Builder()
         .setQueueDeclare(false)
+        .setQueueDeclareDurable(false)
         .setMaxReadTime(null)
         .setMaxNumRecords(Long.MAX_VALUE)
         .setUseCorrelationId(false)
@@ -114,6 +115,7 @@ public class RabbitMqIO {
     return new AutoValue_RabbitMqIO_Write.Builder()
         .setExchangeDeclare(false)
         .setQueueDeclare(false)
+        .setQueueDeclareDurable(false)
         .build();
   }
 
@@ -175,6 +177,8 @@ public class RabbitMqIO {
 
     abstract boolean queueDeclare();
 
+    abstract boolean queueDeclareDurable();
+
     @Nullable
     abstract String exchange();
 
@@ -200,6 +204,8 @@ public class RabbitMqIO {
       abstract Builder setQueue(String queue);
 
       abstract Builder setQueueDeclare(boolean queueDeclare);
+
+      abstract Builder setQueueDeclareDurable(boolean queueDeclareDurable);
 
       abstract Builder setExchange(String exchange);
 
@@ -239,9 +245,14 @@ public class RabbitMqIO {
      *
      * @param queueDeclare If {@code true}, {@link RabbitMqIO} will declare the queue. If another
      *     application declare the queue, it's not required.
+     * @param queueDeclareDurable If {@code true}, {@link RabbitMqIO} will declare the queue as
+     *     durable.
      */
-    public Read withQueueDeclare(boolean queueDeclare) {
-      return builder().setQueueDeclare(queueDeclare).build();
+    public Read withQueueDeclare(boolean queueDeclare, boolean queueDeclareDurable) {
+      return builder()
+          .setQueueDeclare(queueDeclare)
+          .setQueueDeclareDurable(queueDeclareDurable)
+          .build();
     }
 
     /**
@@ -424,7 +435,7 @@ public class RabbitMqIO {
         if (source.spec.queueDeclare()) {
           // declare the queue (if not done by another application)
           // channel.queueDeclare(queueName, durable, exclusive, autoDelete, arguments);
-          channel.queueDeclare(queueName, false, false, false, null);
+          channel.queueDeclare(queueName, source.spec.queueDeclareDurable(), false, false, null);
         }
         if (source.spec.exchange() != null) {
           channel.exchangeDeclare(source.spec.exchange(), source.spec.exchangeType());
@@ -518,6 +529,8 @@ public class RabbitMqIO {
 
     abstract boolean queueDeclare();
 
+    abstract boolean queueDeclareDurable();
+
     abstract Builder builder();
 
     @AutoValue.Builder
@@ -533,6 +546,8 @@ public class RabbitMqIO {
       abstract Builder setQueue(String queue);
 
       abstract Builder setQueueDeclare(boolean queueDeclare);
+
+      abstract Builder setQueueDeclareDurable(boolean queueDeclareDurable);
 
       abstract Write build();
     }
@@ -566,7 +581,7 @@ public class RabbitMqIO {
     /**
      * Defines the queue where the messages will be sent. The queue has to be declared. It can be
      * done by another application or by {@link RabbitMqIO} if you define {@code true} for {@link
-     * RabbitMqIO.Write#withQueueDeclare(boolean))}.
+     * RabbitMqIO.Write#withQueueDeclare(boolean, boolean))}.
      */
     public Write withQueue(String queue) {
       checkArgument(queue != null, "queue can not be null");
@@ -579,8 +594,11 @@ public class RabbitMqIO {
      *
      * @param queueDeclare {@code true} to declare the queue, {@code false} else.
      */
-    public Write withQueueDeclare(boolean queueDeclare) {
-      return builder().setQueueDeclare(queueDeclare).build();
+    public Write withQueueDeclare(boolean queueDeclare, boolean queueDeclareDurable) {
+      return builder()
+          .setQueueDeclare(queueDeclare)
+          .setQueueDeclareDurable(queueDeclareDurable)
+          .build();
     }
 
     @Override
@@ -622,7 +640,7 @@ public class RabbitMqIO {
           channel.exchangeDeclare(spec.exchange(), spec.exchangeType());
         }
         if (spec.queue() != null && spec.queueDeclare()) {
-          channel.queueDeclare(spec.queue(), true, false, false, null);
+          channel.queueDeclare(spec.queue(), spec.queueDeclareDurable(), false, false, null);
         }
       }
 
