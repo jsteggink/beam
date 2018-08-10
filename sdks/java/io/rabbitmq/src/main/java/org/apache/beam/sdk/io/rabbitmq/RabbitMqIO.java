@@ -50,6 +50,8 @@ import org.apache.beam.sdk.values.PBegin;
 import org.apache.beam.sdk.values.PCollection;
 import org.joda.time.Duration;
 import org.joda.time.Instant;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A IO to publish or consume messages with a RabbitMQ broker.
@@ -103,6 +105,9 @@ import org.joda.time.Instant;
  */
 @Experimental(Experimental.Kind.SOURCE_SINK)
 public class RabbitMqIO {
+
+  private static final Logger LOG = LoggerFactory.getLogger(RabbitMqIO.class);
+
   public static Read read() {
     return new AutoValue_RabbitMqIO_Read.Builder()
         .setQueueDeclare(false)
