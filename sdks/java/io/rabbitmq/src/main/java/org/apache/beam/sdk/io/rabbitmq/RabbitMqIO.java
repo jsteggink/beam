@@ -34,6 +34,8 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeoutException;
 import javax.annotation.Nullable;
 import org.apache.beam.sdk.annotations.Experimental;
@@ -136,12 +138,13 @@ public class RabbitMqIO {
       connectionFactory.setNetworkRecoveryInterval(5000);
       connectionFactory.setRequestedHeartbeat(60);
       connectionFactory.setTopologyRecoveryEnabled(true);
-      connectionFactory.setRequestedChannelMax(0);
+      connectionFactory.setRequestedChannelMax(1);
       connectionFactory.setRequestedFrameMax(0);
     }
 
     public void start() throws TimeoutException, IOException {
-      connection = connectionFactory.newConnection();
+      ExecutorService es = Executors.newFixedThreadPool(1);
+      connection = connectionFactory.newConnection(es);
       channel = connection.createChannel();
       if (channel == null) {
         throw new IOException("No RabbitMQ channel available");
