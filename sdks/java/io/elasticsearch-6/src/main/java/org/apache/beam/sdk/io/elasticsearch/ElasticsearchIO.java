@@ -157,8 +157,6 @@ public class ElasticsearchIO {
         .setMaxBatchSize(1000)
         // advised default starting batch size bytes in ES docs
         .setMaxBatchSizeBytes(5L * 1024L * 1024L)
-        // default ES value
-        .setConcurrentRequests(1)
         .build();
   }
 
@@ -876,9 +874,6 @@ public class ElasticsearchIO {
     abstract BackOffPolicyConfiguration getBackOffPolicyConfiguration();
 
     @Nullable
-    abstract Integer getConcurrentRequests();
-
-    @Nullable
     abstract Long getFlushInterval();
 
     @Nullable
@@ -900,13 +895,6 @@ public class ElasticsearchIO {
        */
       abstract Builder setBackOffPolicyConfiguration(BackOffPolicyConfiguration
           backOffPolicyConfiguration);
-
-      /**
-       * {@link BulkProcessor.Builder#setConcurrentRequests(int)}.
-       * @param concurrentRequests
-       * @return
-       */
-      abstract Builder setConcurrentRequests(Integer concurrentRequests);
 
       /**
        * {@link BulkProcessor.Builder#setFlushInterval(org.elasticsearch.common.unit.TimeValue)}.
@@ -957,16 +945,6 @@ public class ElasticsearchIO {
           + "null.");
 
       return builder().setBackOffPolicyConfiguration(backOffPolicyConfiguration).build();
-    }
-
-    /**
-     * Provide the number of concurrent requests for the BulkProcessor.
-     *
-     * @param concurrentRequests number of concurrent requests for the BulkProcessor.
-     * @return the {@link Write} with concurrent requests set.
-     */
-    public Write withConcurrentRequests(Integer concurrentRequests) {
-      return builder().setConcurrentRequests(concurrentRequests).build();
     }
 
     /**
@@ -1076,7 +1054,8 @@ public class ElasticsearchIO {
 
         bulkProcessorBuilder.setBulkActions(spec.getMaxBatchSize())
             .setBulkSize(new ByteSizeValue(spec.getMaxBatchSizeBytes()))
-            .setConcurrentRequests(spec.getConcurrentRequests());
+            // Beam is not thread-safe, so we can't have concurrent requests.
+            .setConcurrentRequests(0);
 
         if (null != spec.getFlushInterval()) {
           bulkProcessorBuilder.
