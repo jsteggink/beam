@@ -60,14 +60,13 @@ public class ElasticsearchIOTest extends ESIntegTestCase implements Serializable
   private ElasticsearchIOTestCommon elasticsearchIOTestCommon;
   private ConnectionConfiguration connectionConfiguration;
 
-  private String[] fillAddresses(){
+  private String[] fillAddresses() {
     ArrayList<String> result = new ArrayList<>();
-    for (InetSocketAddress address : cluster().httpAddresses()){
+    for (InetSocketAddress address : cluster().httpAddresses()) {
       result.add(String.format("http://%s:%s", address.getHostString(), address.getPort()));
     }
     return result.toArray(new String[result.size()]);
   }
-
 
   @Override
   protected Settings nodeSettings(int nodeOrdinal) {
@@ -76,7 +75,7 @@ public class ElasticsearchIOTest extends ESIntegTestCase implements Serializable
         .put("http.enabled", "true")
         // had problems with some jdk, embedded ES was too slow for bulk insertion,
         // and queue of 50 was full. No pb with real ES instance (cf testWrite integration test)
-        .put("thread_pool.bulk.queue_size", 100)
+        .put("thread_pool.bulk.queue_size", 400)
         .build();
   }
 
@@ -119,7 +118,7 @@ public class ElasticsearchIOTest extends ESIntegTestCase implements Serializable
 
   @Test
   public void testRead() throws Exception {
-    // need to create the index using the helper method (not create it at first insertion)
+   // need to create the index using the helper method (not create it at first insertion)
    // for the indexSettings() to be run
    createIndex(ES_INDEX);
    elasticsearchIOTestCommon.setPipeline(pipeline);
@@ -158,6 +157,11 @@ public class ElasticsearchIOTest extends ESIntegTestCase implements Serializable
   @Test
   public void testWriteWithMaxBatchSizeBytes() throws Exception {
     elasticsearchIOTestCommon.testWriteWithMaxBatchSizeBytes();
+  }
+
+  @Test
+  public void testBackOffPolicy() {
+    // TODO BackOffPolicy test
   }
 
   @Test
