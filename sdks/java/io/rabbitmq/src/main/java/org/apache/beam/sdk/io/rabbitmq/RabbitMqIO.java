@@ -238,7 +238,7 @@ public class RabbitMqIO {
     /**
      * If you want to directly consume messages from a specific queue, you just have to specify the
      * queue name. Optionally, you can declare the queue using {@link
-     * RabbitMqIO.Read#withQueueDeclare(boolean)}.
+     * RabbitMqIO.Read#withQueueDeclare(boolean, boolean)}.
      */
     public Read withQueue(String queue) {
       checkArgument(queue != null, "queue can not be null");
