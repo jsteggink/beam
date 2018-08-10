@@ -30,6 +30,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.Serializable;
+import java.net.MalformedURLException;
 import java.net.URL;
 import java.security.KeyStore;
 import java.util.ArrayList;
@@ -83,6 +84,8 @@ import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.SearchHits;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.elasticsearch.search.slice.SliceBuilder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Transforms for reading and writing data from/to Elasticsearch.
@@ -131,6 +134,8 @@ import org.elasticsearch.search.slice.SliceBuilder;
  */
 @Experimental(Experimental.Kind.SOURCE_SINK)
 public class ElasticsearchIO {
+
+  private static final Logger LOG = LoggerFactory.getLogger(ElasticsearchIO.class);
 
   private static final int VALID_ES_VERSION = 6;
 
@@ -323,7 +328,12 @@ public class ElasticsearchIO {
       HttpHost[] hosts = new HttpHost[getAddresses().size()];
       int i = 0;
       for (String address : getAddresses()) {
-        URL url = new URL(address);
+        URL url = null;
+        try {
+          url = new URL(address);
+        } catch (MalformedURLException e) {
+          LOG.error(String.format("Malformed URL: %s", e.getMessage()));
+        }
         hosts[i] = new HttpHost(url.getHost(), url.getPort(), url.getProtocol());
         i++;
       }
@@ -1141,7 +1151,7 @@ public class ElasticsearchIO {
       return backendVersion;
 
     } catch (IOException e){
-      throw (new IllegalArgumentException("Cannot get Elasticsearch version"));
+      throw (new IllegalArgumentException("Cannot get Elasticsearch version", e));
     }
   }
 }
