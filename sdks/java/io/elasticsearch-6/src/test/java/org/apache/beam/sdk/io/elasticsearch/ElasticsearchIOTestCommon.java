@@ -17,6 +17,10 @@
  */
 package org.apache.beam.sdk.io.elasticsearch;
 
+import static org.apache.beam.sdk.io.elasticsearch.ElasticSearchIOTestUtils.NUM_SCIENTISTS;
+import static org.apache.beam.sdk.io.elasticsearch.ElasticSearchIOTestUtils.countByMatch;
+import static org.apache.beam.sdk.io.elasticsearch.ElasticSearchIOTestUtils.countByScientistName;
+import static org.apache.beam.sdk.io.elasticsearch.ElasticSearchIOTestUtils.refreshIndexAndGetCurrentNumDocs;
 import static org.apache.beam.sdk.io.elasticsearch.ElasticsearchIO.BoundedElasticsearchSource;
 import static org.apache.beam.sdk.io.elasticsearch.ElasticsearchIO.ConnectionConfiguration;
 import static org.apache.beam.sdk.io.elasticsearch.ElasticsearchIO.Read;
@@ -30,6 +34,7 @@ import static org.junit.Assert.assertThat;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.io.IOException;
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import org.apache.beam.sdk.options.PipelineOptions;
@@ -44,8 +49,10 @@ import org.apache.http.HttpEntity;
 import org.apache.http.entity.ContentType;
 import org.apache.http.nio.entity.NStringEntity;
 import org.elasticsearch.action.DocWriteRequest;
+import org.elasticsearch.action.index.IndexRequest;
 import org.elasticsearch.client.Response;
 import org.elasticsearch.client.RestHighLevelClient;
+import org.elasticsearch.common.xcontent.XContentType;
 import org.elasticsearch.index.query.QueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
 import org.hamcrest.CustomMatcher;
@@ -59,20 +66,19 @@ class ElasticsearchIOTestCommon implements Serializable {
   private static final Logger LOG = LoggerFactory.getLogger(ElasticsearchIOTestCommon.class);
 
   static final String ES_INDEX = "beam";
-  static final String ES_TYPE = "test";
+  static final String ES_TYPE = "_doc";
   static final long NUM_DOCS_UTESTS = 400L;
   static final long NUM_DOCS_ITESTS = 50000L;
   static final float ACCEPTABLE_EMPTY_SPLITS_PERCENTAGE = 0.5f;
   private static final long AVERAGE_DOC_SIZE = 25L;
 
-  private static final int NUM_SCIENTISTS = 10;
   private static final int BATCH_SIZE = 200;
   private static final long BATCH_SIZE_BYTES = 2048L;
 
-  private long numDocs;
-  private ConnectionConfiguration connectionConfiguration;
-  private RestHighLevelClient restHighLevelClient;
-  private boolean useAsITests;
+  private final long numDocs;
+  private final ConnectionConfiguration connectionConfiguration;
+  private final RestHighLevelClient restHighLevelClient;
+  private final boolean useAsITests;
 
   private TestPipeline pipeline;
   private ExpectedException expectedException;
@@ -95,10 +101,14 @@ class ElasticsearchIOTestCommon implements Serializable {
     this.expectedException = expectedException;
   }
 
-  void testSizes() throws Exception {
-    if (!useAsITests) {
-      ElasticSearchIOTestUtils.insertTestDocuments(connectionConfiguration, numDocs,
+  void insertTestDocuments() throws IOException {
+    ElasticSearchIOTestUtils.insertTestDocuments(connectionConfiguration, numDocs,
           restHighLevelClient);
+  }
+
+  void testSizes() throws IOException {
+    if (!useAsITests) {
+      insertTestDocuments();
     }
     PipelineOptions options = PipelineOptionsFactory.create();
     Read read =
@@ -109,14 +119,14 @@ class ElasticsearchIOTestCommon implements Serializable {
     // (due to internal Elasticsearch implementation)
     long estimatedSize = initialSource.getEstimatedSizeBytes(options);
     LOG.info("Estimated size: {}", estimatedSize);
-    assertThat("Wrong estimated size", estimatedSize, greaterThan(AVERAGE_DOC_SIZE * numDocs));
+    assertThat("Wrong estimated size", estimatedSize, greaterThan(AVERAGE_DOC_SIZE
+        * numDocs));
   }
 
 
   void testRead() throws Exception {
     if (!useAsITests) {
-      ElasticSearchIOTestUtils.insertTestDocuments(connectionConfiguration, numDocs,
-          restHighLevelClient);
+      insertTestDocuments();
     }
 
     PCollection<String> output =
@@ -133,8 +143,7 @@ class ElasticsearchIOTestCommon implements Serializable {
 
   void testReadWithQuery() throws Exception {
     if (!useAsITests){
-      ElasticSearchIOTestUtils.insertTestDocuments(connectionConfiguration, numDocs,
-          restHighLevelClient);
+      insertTestDocuments();
     }
 
     QueryBuilder queryBuilder = QueryBuilders.matchQuery("Einstein", "scientist");
@@ -154,9 +163,15 @@ class ElasticsearchIOTestCommon implements Serializable {
         ElasticSearchIOTestUtils.createDocuments(
             numDocs, ElasticSearchIOTestUtils.InjectionMode.DO_NOT_INJECT_INVALID_DOCS,
             connectionConfiguration.getIndex());
-      pipeline
-        .apply(Create.of(data))
-        .apply(ElasticsearchIO.write().withConnectionConfiguration(connectionConfiguration));
+
+    pipeline
+        .apply(Create.of(data).withCoder(ESDocWriteRequestCoder.of()))
+        .apply(ElasticsearchIO.write().withConnectionConfiguration(connectionConfiguration)
+            .withBackOffPolicyConfiguration(ElasticsearchIO.BackOffPolicyConfiguration.create(
+                ElasticsearchIO.BackOffPolicyConfiguration.BackOffPolicyType.EXPONENTIAL, null,
+                null))
+            .withConcurrentRequests(0)); // ES advices to set concurrent requests to 0 for testing.
+    /* https://www.elastic.co/guide/en/elasticsearch/client/java-api/current/java-docs-bulk-processor.html#java-docs-bulk-processor-tests */
     pipeline.run();
 
     long currentNumDocs = ElasticSearchIOTestUtils
@@ -187,6 +202,10 @@ class ElasticsearchIOTestCommon implements Serializable {
     Write write =
         ElasticsearchIO.write()
             .withConnectionConfiguration(connectionConfiguration)
+            .withConcurrentRequests(0) // ES advices to set concurrent requests to 0 for testing.
+            .withBackOffPolicyConfiguration(ElasticsearchIO.BackOffPolicyConfiguration.create(
+                ElasticsearchIO.BackOffPolicyConfiguration.BackOffPolicyType.EXPONENTIAL, null,
+                null))
             .withMaxBatchSize(BATCH_SIZE);
     List<DocWriteRequest> input =
         ElasticSearchIOTestUtils.createDocuments(
@@ -223,6 +242,7 @@ class ElasticsearchIOTestCommon implements Serializable {
     Write write =
         ElasticsearchIO.write()
             .withConnectionConfiguration(connectionConfiguration)
+            .withConcurrentRequests(0) // ES advices to set concurrent requests to 0 for testing.
             .withMaxBatchSize(BATCH_SIZE);
     // write bundles size is the runner decision, we cannot force a bundle size,
     // so we test the Writer as a DoFn outside of a runner.
@@ -267,6 +287,7 @@ class ElasticsearchIOTestCommon implements Serializable {
     Write write =
         ElasticsearchIO.write()
             .withConnectionConfiguration(connectionConfiguration)
+            .withConcurrentRequests(0) // ES advices to set concurrent requests to 0 for testing.
             .withMaxBatchSizeBytes(BATCH_SIZE_BYTES);
     // write bundles size is the runner decision, we cannot force a bundle size,
     // so we test the Writer as a DoFn outside of a runner.
@@ -309,5 +330,50 @@ class ElasticsearchIOTestCommon implements Serializable {
         }
       }
     }
+  }
+
+  /**
+   * Tests partial updates by adding a group field to each document in the standard test set. The
+   * group field is populated as the modulo 2 of the document id allowing for a test to ensure the
+   * documents are split into 2 groups.
+   */
+  void testWritePartialUpdate() throws Exception {
+    if (!useAsITests) {
+      ElasticSearchIOTestUtils.insertTestDocuments(connectionConfiguration, numDocs, restHighLevelClient);
+    }
+
+    // defensive coding to ensure our initial state is as expected
+
+    long currentNumDocs = refreshIndexAndGetCurrentNumDocs(connectionConfiguration, restHighLevelClient);
+    assertEquals(numDocs, currentNumDocs);
+
+    // partial documents containing the ID and group only
+    List<DocWriteRequest> data = new ArrayList<>();
+    for (int i = 0; i < numDocs; i++) {
+      IndexRequest doc = new IndexRequest(connectionConfiguration.getIndex(), "_doc", Integer.toString(i));
+      doc.source(String.format("{\"group\" : %s}", i % 2), XContentType.JSON);
+      data.add(doc);
+    }
+
+    pipeline
+        .apply(Create.of(data).withCoder(ESDocWriteRequestCoder.of()))
+        .apply(ElasticsearchIO.write().withConnectionConfiguration(connectionConfiguration)
+            .withBackOffPolicyConfiguration(ElasticsearchIO.BackOffPolicyConfiguration.create(
+                ElasticsearchIO.BackOffPolicyConfiguration.BackOffPolicyType.EXPONENTIAL, null,
+                null))
+            .withConcurrentRequests(0));
+    pipeline.run();
+
+    currentNumDocs = refreshIndexAndGetCurrentNumDocs(connectionConfiguration, restHighLevelClient);
+
+    // check we have not unwittingly modified existing behaviour
+    assertEquals(numDocs, currentNumDocs);
+    assertEquals(
+        numDocs / NUM_SCIENTISTS,
+        countByScientistName(connectionConfiguration, restHighLevelClient, "Einstein"));
+
+    // Partial update assertions
+    assertEquals(numDocs / 2, countByMatch(connectionConfiguration, restHighLevelClient, "group", "0"));
+    assertEquals(numDocs / 2, countByMatch(connectionConfiguration, restHighLevelClient, "group", "1"));
   }
 }
