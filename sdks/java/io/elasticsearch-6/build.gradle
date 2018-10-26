@@ -16,16 +16,25 @@
  * limitations under the License.
  */
 
+<<<<<<< HEAD
 apply plugin: org.apache.beam.gradle.BeamModulePlugin
 applyJavaNature()
 
 description = "Apache Beam :: SDKs :: Java :: IO :: Elasticsearch 6+"
 ext.summary = "IO to read and write on Elasticsearch 6+"
+=======
+apply from: project(":").file("build_rules.gradle")
+applyJavaNature()
+
+description = "Apache Beam :: SDKs :: Java :: IO :: Elasticsearch 6.x"
+ext.summary = "IO to read and write on Elasticsearch 6.x"
+>>>>>>> ecf572b091c025ddc4aa8e3c25997f91b49158e3
 
 dependencies {
   compile library.java.guava
   shadow project(path: ":beam-sdks-java-core", configuration: "shadow")
   shadow library.java.jackson_databind
+<<<<<<< HEAD
   shadow "com.fasterxml.jackson.core:jackson-annotations:2.8.9"
   shadow "org.elasticsearch.client:elasticsearch-rest-client:6.4.2"
   shadow "org.elasticsearch.client:elasticsearch-rest-high-level-client:6.4.2"
@@ -33,5 +42,14 @@ dependencies {
   shadow "org.apache.httpcomponents:httpcore-nio:4.4.10"
   shadow "org.apache.httpcomponents:httpcore:4.4.10"
   shadow "org.apache.httpcomponents:httpclient:4.5.6"
+=======
+  shadow library.java.findbugs_jsr305
+  shadow "com.fasterxml.jackson.core:jackson-annotations:2.8.9"
+  shadow "org.elasticsearch.client:elasticsearch-rest-client:6.2.4"
+  shadow "org.apache.httpcomponents:httpasyncclient:4.1.2"
+  shadow "org.apache.httpcomponents:httpcore-nio:4.4.5"
+  shadow "org.apache.httpcomponents:httpcore:4.4.5"
+  shadow "org.apache.httpcomponents:httpclient:4.5.2"
+>>>>>>> ecf572b091c025ddc4aa8e3c25997f91b49158e3
   testCompile project(path: ":beam-sdks-java-io-common", configuration: "shadow")
 }

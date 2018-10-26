@@ -46,11 +46,17 @@ import org.apache.beam.sdk.coders.Coder;
 import org.apache.beam.sdk.coders.StringUtf8Coder;
 import org.apache.beam.sdk.io.BoundedSource;
 import org.apache.beam.sdk.options.PipelineOptions;
+<<<<<<< HEAD
 import org.apache.beam.sdk.transforms.Create;
 import org.apache.beam.sdk.transforms.DoFn;
 import org.apache.beam.sdk.transforms.PTransform;
 import org.apache.beam.sdk.transforms.ParDo;
 import org.apache.beam.sdk.transforms.Reshuffle;
+=======
+import org.apache.beam.sdk.transforms.DoFn;
+import org.apache.beam.sdk.transforms.PTransform;
+import org.apache.beam.sdk.transforms.ParDo;
+>>>>>>> ecf572b091c025ddc4aa8e3c25997f91b49158e3
 import org.apache.beam.sdk.transforms.display.DisplayData;
 import org.apache.beam.sdk.values.PBegin;
 import org.apache.beam.sdk.values.PCollection;
@@ -602,6 +608,7 @@ public class ElasticsearchIO {
       checkState(
           connectionConfiguration != null,
           "withConnectionConfiguration() is required");
+<<<<<<< HEAD
 
       /*
       return input
@@ -611,6 +618,8 @@ public class ElasticsearchIO {
           .apply("Read", ParDo.of(new ReadFn()));
           */
 
+=======
+>>>>>>> ecf572b091c025ddc4aa8e3c25997f91b49158e3
       return input.apply(org.apache.beam.sdk.io.Read
           .from(new BoundedElasticsearchSource(this, null, null, null)));
     }
