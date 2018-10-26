@@ -46,9 +46,11 @@ import org.apache.beam.sdk.coders.Coder;
 import org.apache.beam.sdk.coders.StringUtf8Coder;
 import org.apache.beam.sdk.io.BoundedSource;
 import org.apache.beam.sdk.options.PipelineOptions;
+import org.apache.beam.sdk.transforms.Create;
 import org.apache.beam.sdk.transforms.DoFn;
 import org.apache.beam.sdk.transforms.PTransform;
 import org.apache.beam.sdk.transforms.ParDo;
+import org.apache.beam.sdk.transforms.Reshuffle;
 import org.apache.beam.sdk.transforms.display.DisplayData;
 import org.apache.beam.sdk.values.PBegin;
 import org.apache.beam.sdk.values.PCollection;
@@ -600,6 +602,15 @@ public class ElasticsearchIO {
       checkState(
           connectionConfiguration != null,
           "withConnectionConfiguration() is required");
+
+      /*
+      return input
+          .apply("Create", Create.of(this))
+          .apply("Split", ParDo.of(new SplitFn()))
+          .apply("Reshuffle", Reshuffle.viaRandomKey())
+          .apply("Read", ParDo.of(new ReadFn()));
+          */
+
       return input.apply(org.apache.beam.sdk.io.Read
           .from(new BoundedElasticsearchSource(this, null, null, null)));
     }
