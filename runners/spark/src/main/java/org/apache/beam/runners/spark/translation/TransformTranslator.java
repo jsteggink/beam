@@ -43,7 +43,6 @@ import org.apache.beam.sdk.coders.KvCoder;
 import org.apache.beam.sdk.io.Read;
 import org.apache.beam.sdk.transforms.Combine;
 import org.apache.beam.sdk.transforms.CombineWithContext;
-import org.apache.beam.sdk.transforms.Create;
 import org.apache.beam.sdk.transforms.DoFn;
 import org.apache.beam.sdk.transforms.Flatten;
 import org.apache.beam.sdk.transforms.GroupByKey;
@@ -65,6 +64,8 @@ import org.apache.beam.sdk.values.PValue;
 import org.apache.beam.sdk.values.TupleTag;
 import org.apache.beam.sdk.values.WindowingStrategy;
 import org.apache.spark.Accumulator;
+import org.apache.spark.HashPartitioner;
+import org.apache.spark.Partitioner;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
@@ -130,17 +131,14 @@ public final class TransformTranslator {
             WindowedValue.FullWindowedValueCoder.of(coder.getValueCoder(), windowFn.windowCoder());
 
         // --- group by key only.
+        Long bundleSize =
+            context.getSerializableOptions().get().as(SparkPipelineOptions.class).getBundleSize();
+        Partitioner partitioner =
+            (bundleSize > 0)
+                ? new HashPartitioner(context.getSparkContext().defaultParallelism())
+                : null;
         JavaRDD<WindowedValue<KV<K, Iterable<WindowedValue<V>>>>> groupedByKey =
-            GroupCombineFunctions.groupByKeyOnly(
-                inRDD,
-                keyCoder,
-                wvCoder,
-                context
-                        .getSerializableOptions()
-                        .get()
-                        .as(SparkPipelineOptions.class)
-                        .getBundleSize()
-                    > 0);
+            GroupCombineFunctions.groupByKeyOnly(inRDD, keyCoder, wvCoder, partitioner);
 
         // --- now group also by window.
         // for batch, GroupAlsoByWindow uses an in-memory StateInternals.
@@ -433,7 +431,7 @@ public final class TransformTranslator {
         WindowedValue.FullWindowedValueCoder.of(kvCoder.getValueCoder(), windowCoder);
 
     JavaRDD<WindowedValue<KV<K, Iterable<WindowedValue<V>>>>> groupRDD =
-        GroupCombineFunctions.groupByKeyOnly(kvInRDD, keyCoder, wvCoder, true);
+        GroupCombineFunctions.groupByKeyOnly(kvInRDD, keyCoder, wvCoder, null);
 
     return groupRDD
         .map(
@@ -491,24 +489,6 @@ public final class TransformTranslator {
       @Override
       public String toNativeString() {
         return "map(new <windowFn>())";
-      }
-    };
-  }
-
-  private static <T> TransformEvaluator<Create.Values<T>> create() {
-    return new TransformEvaluator<Create.Values<T>>() {
-      @Override
-      public void evaluate(Create.Values<T> transform, EvaluationContext context) {
-        Iterable<T> elems = transform.getElements();
-        // Use a coder to convert the objects in the PCollection to byte arrays, so they
-        // can be transferred over the network.
-        Coder<T> coder = context.getOutput(transform).getCoder();
-        context.putBoundedDatasetFromValues(transform, elems, coder);
-      }
-
-      @Override
-      public String toNativeString() {
-        return "sparkContext.parallelize(Arrays.asList(...))";
       }
     };
   }
@@ -585,7 +565,6 @@ public final class TransformTranslator {
     EVALUATORS.put(Combine.Globally.class, combineGlobally());
     EVALUATORS.put(Combine.PerKey.class, combinePerKey());
     EVALUATORS.put(Flatten.PCollections.class, flattenPColl());
-    EVALUATORS.put(Create.Values.class, create());
     //    EVALUATORS.put(View.AsSingleton.class, viewAsSingleton());
     //    EVALUATORS.put(View.AsIterable.class, viewAsIter());
     EVALUATORS.put(View.CreatePCollectionView.class, createPCollView());

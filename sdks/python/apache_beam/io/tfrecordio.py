@@ -44,7 +44,12 @@ def _default_crc32c_fn(value):
   if not _default_crc32c_fn.fn:
     try:
       import snappy  # pylint: disable=import-error
-      _default_crc32c_fn.fn = snappy._snappy._crc32c  # pylint: disable=protected-access
+      # Support multiple versions of python-snappy:
+      # https://github.com/andrix/python-snappy/pull/53
+      if getattr(snappy, '_crc32c', None):
+        _default_crc32c_fn.fn = snappy._crc32c  # pylint: disable=protected-access
+      else:
+        _default_crc32c_fn.fn = snappy._snappy._crc32c  # pylint: disable=protected-access
     except ImportError:
       logging.warning('Couldn\'t find python-snappy so the implementation of '
                       '_TFRecordUtil._masked_crc32c is not as fast as it could '
@@ -95,12 +100,13 @@ class _TFRecordUtil(object):
       file_handle: The file to write to.
       value: A string content of the record.
     """
-    encoded_length = struct.pack('<Q', len(value))
-    file_handle.write('{}{}{}{}'.format(
+    encoded_length = struct.pack(b'<Q', len(value))
+    file_handle.write(b''.join([
         encoded_length,
-        struct.pack('<I', cls._masked_crc32c(encoded_length)),  #
+        struct.pack(b'<I', cls._masked_crc32c(encoded_length)),
         value,
-        struct.pack('<I', cls._masked_crc32c(value))))
+        struct.pack(b'<I', cls._masked_crc32c(value))
+    ]))
 
   @classmethod
   def read_record(cls, file_handle):

@@ -22,6 +22,7 @@ PrecommitJobBuilder builder = new PrecommitJobBuilder(
     scope: this,
     nameBase: 'Java_Examples_Dataflow',
     gradleTask: ':javaExamplesDataflowPreCommit',
+    gradleSwitches: ['-PdisableSpotlessCheck=true'], // spotless checked in separate pre-commit
     triggerPathPatterns: [
       '^model/.*$',
       '^sdks/java/.*$',

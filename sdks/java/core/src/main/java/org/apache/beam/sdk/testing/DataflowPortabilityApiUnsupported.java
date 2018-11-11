@@ -15,19 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.beam.sdk.extensions.euphoria.core.translate;
+package org.apache.beam.sdk.testing;
 
-import com.google.common.base.Preconditions;
-import org.apache.beam.sdk.values.PCollection;
-import org.apache.beam.sdk.values.PCollectionList;
-
-/** Utilities related to {@link OperatorTranslator}s. */
-class OperatorTranslators {
-
-  private OperatorTranslators() {}
-
-  static <T> PCollection<T> getSingleInput(PCollectionList<T> inputs) {
-    Preconditions.checkArgument(inputs.size() == 1, "There should be exactly one input.");
-    return inputs.get(0);
-  }
-}
+/** Category tag for the dataflow fn-api worker unsupported tests. */
+public interface DataflowPortabilityApiUnsupported {}

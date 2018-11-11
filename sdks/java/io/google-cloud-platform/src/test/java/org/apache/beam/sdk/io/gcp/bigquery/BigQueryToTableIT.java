@@ -42,6 +42,7 @@ import org.apache.beam.sdk.options.Description;
 import org.apache.beam.sdk.options.ExperimentalOptions;
 import org.apache.beam.sdk.options.PipelineOptionsFactory;
 import org.apache.beam.sdk.options.Validation;
+import org.apache.beam.sdk.testing.DataflowPortabilityApiUnsupported;
 import org.apache.beam.sdk.testing.TestPipeline;
 import org.apache.beam.sdk.testing.TestPipelineOptions;
 import org.apache.beam.sdk.transforms.Reshuffle;
@@ -51,13 +52,16 @@ import org.apache.beam.sdk.values.PCollection;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Integration test for BigqueryIO with DataflowRunner and DirectRunner. */
 @RunWith(JUnit4.class)
 public class BigQueryToTableIT {
-
+  private static final Logger LOG = LoggerFactory.getLogger(BigQueryToTableIT.class);
   private BigQueryToTableOptions options;
   private String project;
 
@@ -145,9 +149,11 @@ public class BigQueryToTableIT {
   }
 
   private void verifyLegacyQueryRes() throws Exception {
+    LOG.info("Starting verifyLegacyQueryRes in outputTable {}", outputTable);
     List<String> legacyQueryExpectedRes = ImmutableList.of("apple", "orange");
     QueryResponse response =
         bqClient.queryWithRetries(String.format("SELECT fruit from [%s];", outputTable), project);
+    LOG.info("Finished to query result table {}", this.outputTable);
     List<String> tableResult =
         response
             .getRows()
@@ -160,6 +166,7 @@ public class BigQueryToTableIT {
   }
 
   private void verifyNewTypesQueryRes() throws Exception {
+    LOG.info("Starting verifyNewTypesQueryRes with outputTable {}", outputTable);
     List<String> newTypeQueryExpectedRes =
         ImmutableList.of(
             "abc=,2000-01-01,00:00:00",
@@ -168,6 +175,7 @@ public class BigQueryToTableIT {
     QueryResponse response =
         bqClient.queryWithRetries(
             String.format("SELECT bytes, date, time FROM [%s];", this.outputTable), this.project);
+    LOG.info("Finished to query result table {}", this.outputTable);
     List<String> tableResult =
         response
             .getRows()
@@ -248,6 +256,7 @@ public class BigQueryToTableIT {
 
   @After
   public void cleanBqEnvironment() {
+    LOG.info("Start to clean up tables and datasets.");
     bqClient.deleteDataset(project, this.bigQueryDatasetId);
   }
 
@@ -289,6 +298,7 @@ public class BigQueryToTableIT {
   }
 
   @Test
+  @Category(DataflowPortabilityApiUnsupported.class)
   public void testNewTypesQueryWithoutReshuffleWithCustom() throws Exception {
     this.setupNewTypesQueryTest();
     this.options.setExperiments(
@@ -300,6 +310,7 @@ public class BigQueryToTableIT {
   }
 
   @Test
+  @Category(DataflowPortabilityApiUnsupported.class)
   public void testLegacyQueryWithoutReshuffleWithCustom() throws Exception {
     this.setupLegacyQueryTest();
     this.options.setExperiments(
@@ -311,6 +322,7 @@ public class BigQueryToTableIT {
   }
 
   @Test
+  @Category(DataflowPortabilityApiUnsupported.class)
   public void testStandardQueryWithoutReshuffleWithCustom() throws Exception {
     this.setupStandardQueryTest();
     this.options.setExperiments(

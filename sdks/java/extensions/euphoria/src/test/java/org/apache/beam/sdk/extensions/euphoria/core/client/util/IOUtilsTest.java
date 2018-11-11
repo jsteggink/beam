@@ -33,7 +33,7 @@ public class IOUtilsTest {
   public void testOneIOException() throws IOException {
     IOUtils.forEach(
         Arrays.asList(1, 2, 3),
-        (i) -> {
+        i -> {
           if (i == 2) {
             throw new IOException("Number: " + i);
           }
@@ -41,15 +41,16 @@ public class IOUtilsTest {
   }
 
   @Test
-  public void testSuppressedIOException() throws IOException {
+  public void testSuppressedIOException() {
     try {
       IOUtils.forEach(
           Arrays.asList(1, 2, 3),
-          (i) -> {
+          i -> {
             throw new IOException("Number: " + i);
           });
     } catch (Exception e) {
-      assertEquals(2, e.getSuppressed().length); // two supressed exceptions and one thrown
+      // two suppressed exceptions and one thrown
+      assertEquals(2, e.getSuppressed().length);
       assertTrue(e instanceof IOException);
       assertEquals("Number: 1", e.getMessage());
     }
@@ -57,10 +58,9 @@ public class IOUtilsTest {
 
   @Test(expected = IOException.class)
   public void testStreamIOException() throws IOException {
-
     IOUtils.forEach(
         Stream.of(1, 2, 3),
-        (i) -> {
+        i -> {
           if (i == 2) {
             throw new IOException("Number: " + i);
           }

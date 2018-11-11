@@ -15,8 +15,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.beam.sdk.nexmark;
+
+import org.apache.beam.sdk.options.PipelineOptionsFactory;
+import org.junit.Test;
+
 /**
- * {@link org.apache.beam.sdk.extensions.euphoria.core.client.dataset.Dataset} and its
- * implementations.
+ * Test of {@link Main}; using {@link NexmarkOptions} since we don't want to test option parsing
+ * here.
  */
-package org.apache.beam.sdk.extensions.euphoria.core.client.dataset;
+public class MainTest {
+  @Test
+  public void testSmokeSuiteOnDirectRunner() throws Exception {
+    NexmarkOptions options = PipelineOptionsFactory.create().as(NexmarkOptions.class);
+    // Default for SMOKE is 100k or 10k for heavier queries - way overkill for "smoke" test
+    options.setNumEvents(500L);
+    options.setSuite(NexmarkSuite.SMOKE);
+    options.setManageResources(false);
+    new Main().runAll(options);
+  }
+}

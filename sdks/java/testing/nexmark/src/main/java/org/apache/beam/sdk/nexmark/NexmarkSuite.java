@@ -40,6 +40,9 @@ public enum NexmarkSuite {
   /** As for SMOKE, but with 1b/100m events. */
   FULL_THROTTLE(fullThrottle()),
 
+  /** Query 10, but slow and small for debugging. */
+  SMALL_LOGGER(smallLogger()),
+
   /** Query 10, at high volume with no autoscaling. */
   LONG_RUNNING_LOGGER(longRunningLogger());
 
@@ -52,11 +55,13 @@ public enum NexmarkSuite {
 
   private static List<NexmarkConfiguration> smoke() {
     List<NexmarkConfiguration> configurations = new ArrayList<>();
-    for (int query = 0; query <= 12; query++) {
+    for (NexmarkQueryName query : NexmarkQueryName.values()) {
       NexmarkConfiguration configuration = NexmarkConfiguration.DEFAULT.copy();
       configuration.query = query;
       configuration.numEvents = 100_000;
-      if (query == 4 || query == 6 || query == 9) {
+      if (query == NexmarkQueryName.AVERAGE_PRICE_FOR_CATEGORY
+          || query == NexmarkQueryName.AVERAGE_SELLING_PRICE_BY_SELLER
+          || query == NexmarkQueryName.WINNING_BIDS) {
         // Scale back so overall runtimes are reasonably close across all queries.
         configuration.numEvents /= 10;
       }
@@ -85,11 +90,35 @@ public enum NexmarkSuite {
     return configurations;
   }
 
+  private static List<NexmarkConfiguration> smallLogger() {
+    NexmarkConfiguration configuration = NexmarkConfiguration.DEFAULT.copy();
+    configuration.numEventGenerators = 1;
+
+    configuration.query = NexmarkQueryName.LOG_TO_SHARDED_FILES;
+    configuration.isRateLimited = true;
+    configuration.sourceType = NexmarkUtils.SourceType.PUBSUB;
+    configuration.numEvents = 0; // as many as possible without overflow.
+    configuration.avgPersonByteSize = 500;
+    configuration.avgAuctionByteSize = 500;
+    configuration.avgBidByteSize = 500;
+    configuration.windowSizeSec = 30;
+    configuration.occasionalDelaySec = 360;
+    configuration.probDelayedEvent = 0.001;
+    configuration.useWallclockEventTime = true;
+    configuration.firstEventRate = 100;
+    configuration.nextEventRate = 100;
+    configuration.maxLogEvents = 15000;
+
+    List<NexmarkConfiguration> configurations = new ArrayList<>();
+    configurations.add(configuration);
+    return configurations;
+  }
+
   private static List<NexmarkConfiguration> longRunningLogger() {
     NexmarkConfiguration configuration = NexmarkConfiguration.DEFAULT.copy();
     configuration.numEventGenerators = 10;
 
-    configuration.query = 10;
+    configuration.query = NexmarkQueryName.LOG_TO_SHARDED_FILES;
     configuration.isRateLimited = true;
     configuration.sourceType = NexmarkUtils.SourceType.PUBSUB;
     configuration.numEvents = 0; // as many as possible without overflow.

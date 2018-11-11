@@ -1,4 +1,3 @@
-#!groovy
 /*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -16,7 +15,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.beam.testinfra.metrics
 
 import org.junit.Test
@@ -37,13 +35,13 @@ class ProberTests {
     def allDashboards = new JsonSlurper().parseText(allDashboardsJson)
     def dashboardNames = allDashboards.title
     // Validate at least one expected dashboard exists
-    assert dashboardNames.contains('Post-commit Tests') : 'Expected dashboard does not exist'
+    assert dashboardNames.contains('Post-commit Test Reliability') : 'Expected dashboard does not exist'
     assert dashboardNames.size > 0 : "No dashboards found. Check Grafana dashboard initialization script."
   }
 
   @Test
   void CheckGrafanaStalenessAlerts() {
-    def alertsJson = "${grafanaEndpoint}/api/alerts?dashboardId=data-freshness".toURL().text
+    def alertsJson = "${grafanaEndpoint}/api/alerts?dashboardQuery=Source%20Data%20Freshness".toURL().text
     def alerts = new JsonSlurper().parseText(alertsJson)
     assert alerts.size > 0
     alerts.each { alert ->

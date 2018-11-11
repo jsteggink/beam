@@ -20,6 +20,7 @@ package org.apache.beam.gradle
 
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
 import org.gradle.api.GradleException
 import org.gradle.api.Plugin
 import org.gradle.api.Project
@@ -375,7 +376,7 @@ class BeamModulePlugin implements Plugin<Project> {
         bigdataoss_util                             : "com.google.cloud.bigdataoss:util:$google_cloud_bigdataoss_version",
         bigtable_client_core                        : "com.google.cloud.bigtable:bigtable-client-core:$bigtable_version",
         bigtable_protos                             : "com.google.api.grpc:grpc-google-cloud-bigtable-v2:$generated_grpc_beta_version",
-        byte_buddy                                  : "net.bytebuddy:byte-buddy:1.8.11",
+        byte_buddy                                  : "net.bytebuddy:byte-buddy:1.9.3",
         commons_compress                            : "org.apache.commons:commons-compress:1.16.1",
         commons_csv                                 : "org.apache.commons:commons-csv:1.4",
         commons_io_1x                               : "commons-io:commons-io:1.3.2",
@@ -608,7 +609,7 @@ class BeamModulePlugin implements Plugin<Project> {
 
       // Ensure that tests are packaged and part of the artifact set.
       project.task('packageTests', type: Jar) {
-        classifier = 'tests'
+        classifier = 'tests-unshaded'
         from project.sourceSets.test.output
       }
       project.artifacts.archives project.packageTests
@@ -700,7 +701,13 @@ class BeamModulePlugin implements Plugin<Project> {
       // Enables a plugin which can apply code formatting to source.
       // TODO(https://issues.apache.org/jira/browse/BEAM-4394): Should this plugin be enabled for all projects?
       project.apply plugin: "com.diffplug.gradle.spotless"
+
+      // Spotless can be removed from the 'check' task by passing -PdisableSpotlessCheck=true on the Gradle
+      // command-line. This is useful for pre-commit which runs spotless separately.
+      def disableSpotlessCheck = project.hasProperty('disableSpotlessCheck') &&
+              project.disableSpotlessCheck == 'true'
       project.spotless {
+        enforceCheck !disableSpotlessCheck
         java {
           licenseHeader javaLicenseHeader
           googleJavaFormat()
@@ -797,13 +804,19 @@ class BeamModulePlugin implements Plugin<Project> {
 
       if (configuration.validateShadowJar) {
         project.task('validateShadedJarDoesntLeakNonOrgApacheBeamClasses', dependsOn: 'shadowJar') {
+          ext.outFile = project.file("${project.reportsDir}/${name}.out")
           inputs.files project.configurations.shadow.artifacts.files
+          outputs.files outFile
           doLast {
             project.configurations.shadow.artifacts.files.each {
               FileTree exposedClasses = project.zipTree(it).matching {
                 include "**/*.class"
                 exclude "org/apache/beam/**"
+                // BEAM-5919: Exclude paths for Java 9 multi-release jars.
+                exclude "META-INF/versions/*/module-info.class"
+                exclude "META-INF/versions/*/org/apache/beam/**"
               }
+              outFile.text = exposedClasses.files
               if (exposedClasses.files) {
                 throw new GradleException("$it exposed classes outside of org.apache.beam namespace: ${exposedClasses.files}")
               }
@@ -1127,7 +1140,23 @@ artifactId=${project.name}
         outputs.upToDateWhen { false }
 
         include "**/*IT.class"
-        systemProperties.beamTestPipelineOptions = configuration.integrationTestPipelineOptions
+
+        def pipelineOptionsString = configuration.integrationTestPipelineOptions
+        if(pipelineOptionsString && configuration.runner?.equalsIgnoreCase('dataflow')) {
+          project.evaluationDependsOn(":beam-runners-google-cloud-dataflow-java-legacy-worker")
+          def allOptionsList = (new JsonSlurper()).parseText(pipelineOptionsString)
+          def dataflowWorkerJar = project.findProperty('dataflowWorkerJar') ?:
+                  project.project(":beam-runners-google-cloud-dataflow-java-legacy-worker").shadowJar.archivePath
+
+          allOptionsList.addAll([
+            '--workerHarnessContainerImage=',
+            '--dataflowWorkerJar=${dataflowWorkerJar}',
+          ])
+
+          pipelineOptionsString = JsonOutput.toJson(allOptionsList)
+        }
+
+        systemProperties.beamTestPipelineOptions = pipelineOptionsString
       }
     }
 
@@ -1147,6 +1176,7 @@ artifactId=${project.name}
         //if (runner?.contains('dataflow')) {
         if (runner?.equalsIgnoreCase('dataflow')) {
           testCompile it.project(path: ":beam-runners-google-cloud-dataflow-java", configuration: 'shadowTest')
+          shadow it.project(path: ":beam-runners-google-cloud-dataflow-java-legacy-worker", configuration: 'shadow')
         }
 
         if (runner?.equalsIgnoreCase('direct')) {
@@ -1493,10 +1523,13 @@ artifactId=${project.name}
       }
 
       project.task('validateShadedJarDoesntExportVendoredDependencies', dependsOn: 'shadowJar') {
+        ext.outFile = project.file("${project.reportsDir}/${name}.out")
         inputs.files project.configurations.shadow.artifacts.files
+        outputs.files outFile
         doLast {
           project.configurations.shadow.artifacts.files.each {
             FileTree exportedClasses = project.zipTree(it).matching { include "org/apache/beam/vendor/**" }
+            outFile.text = exportedClasses.files
             if (exportedClasses.files) {
               throw new GradleException("$it exported classes inside of org.apache.beam.vendor namespace: ${exportedClasses.files}")
             }

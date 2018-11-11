@@ -18,11 +18,9 @@
 package org.apache.beam.sdk.nexmark.queries;
 
 import java.io.Serializable;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Set;
 import javax.annotation.Nullable;
 import org.apache.beam.sdk.nexmark.NexmarkConfiguration;
@@ -38,7 +36,7 @@ import org.junit.Assert;
  * Base class for models of the eight NEXMark queries. Provides an assertion function which can be
  * applied against the actual query results to check their consistency with the model.
  */
-public abstract class NexmarkQueryModel implements Serializable {
+public abstract class NexmarkQueryModel<T extends KnownSize> implements Serializable {
   public final NexmarkConfiguration configuration;
 
   NexmarkQueryModel(NexmarkConfiguration configuration) {
@@ -57,20 +55,11 @@ public abstract class NexmarkQueryModel implements Serializable {
     return new Instant(lim - s);
   }
 
-  /** Convert {@code itr} to strings capturing values, timestamps and order. */
-  static <T> List<String> toValueTimestampOrder(Iterator<TimestampedValue<T>> itr) {
-    List<String> strings = new ArrayList<>();
+  /** Convert {@code itr} to strings capturing values and timestamps. */
+  static <T> Set<String> toValueTimestamp(Iterator<TimestampedValue<T>> itr) {
+    Set<String> strings = new HashSet<>();
     while (itr.hasNext()) {
       strings.add(itr.next().toString());
-    }
-    return strings;
-  }
-
-  /** Convert {@code itr} to strings capturing values and order. */
-  static <T> List<String> toValueOrder(Iterator<TimestampedValue<T>> itr) {
-    List<String> strings = new ArrayList<>();
-    while (itr.hasNext()) {
-      strings.add(itr.next().getValue().toString());
     }
     return strings;
   }
@@ -85,11 +74,10 @@ public abstract class NexmarkQueryModel implements Serializable {
   }
 
   /** Return simulator for query. */
-  public abstract AbstractSimulator<?, ?> simulator();
+  public abstract AbstractSimulator<?, T> simulator();
 
   /** Return sub-sequence of results which are significant for model. */
-  Iterable<TimestampedValue<KnownSize>> relevantResults(
-      Iterable<TimestampedValue<KnownSize>> results) {
+  Iterable<TimestampedValue<T>> relevantResults(Iterable<TimestampedValue<T>> results) {
     return results;
   }
 
@@ -97,17 +85,17 @@ public abstract class NexmarkQueryModel implements Serializable {
    * Convert iterator of elements to collection of strings to use when testing coherence of model
    * against actual query results.
    */
-  protected abstract <T> Collection<String> toCollection(Iterator<TimestampedValue<T>> itr);
+  protected abstract Collection<String> toCollection(Iterator<TimestampedValue<T>> itr);
 
   /** Return assertion to use on results of pipeline for this query. */
-  public SerializableFunction<Iterable<TimestampedValue<KnownSize>>, Void> assertionFor() {
+  public SerializableFunction<Iterable<TimestampedValue<T>>, Void> assertionFor() {
     final Collection<String> expectedStrings = toCollection(simulator().results());
     Assert.assertFalse(expectedStrings.isEmpty());
 
-    return new SerializableFunction<Iterable<TimestampedValue<KnownSize>>, Void>() {
+    return new SerializableFunction<Iterable<TimestampedValue<T>>, Void>() {
       @Override
       @Nullable
-      public Void apply(Iterable<TimestampedValue<KnownSize>> actual) {
+      public Void apply(Iterable<TimestampedValue<T>> actual) {
         Collection<String> actualStrings = toCollection(relevantResults(actual).iterator());
         Assert.assertThat("wrong pipeline output", actualStrings, IsEqual.equalTo(expectedStrings));
         return null;
