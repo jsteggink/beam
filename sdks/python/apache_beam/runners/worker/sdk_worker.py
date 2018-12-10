@@ -27,6 +27,7 @@ import logging
 import queue
 import sys
 import threading
+import time
 import traceback
 from builtins import object
 from builtins import range
@@ -45,8 +46,11 @@ from apache_beam.runners.worker.worker_id_interceptor import WorkerIdInterceptor
 
 class SdkHarness(object):
   REQUEST_METHOD_PREFIX = '_request_'
+  SCHEDULING_DELAY_THRESHOLD_SEC = 5*60  # 5 Minutes
 
-  def __init__(self, control_address, worker_count, credentials=None):
+  def __init__(self, control_address, worker_count, credentials=None,
+               profiler_factory=None):
+    self._alive = True
     self._worker_count = worker_count
     self._worker_index = 0
     if credentials is None:
@@ -63,6 +67,7 @@ class SdkHarness(object):
     self._data_channel_factory = data_plane.GrpcClientDataChannelFactory(
         credentials)
     self._state_handler_factory = GrpcStateHandlerFactory()
+    self._profiler_factory = profiler_factory
     self.workers = queue.Queue()
     # one thread is enough for getting the progress report.
     # Assumption:
@@ -72,11 +77,12 @@ class SdkHarness(object):
     self._progress_thread_pool = futures.ThreadPoolExecutor(max_workers=1)
     self._process_thread_pool = futures.ThreadPoolExecutor(
         max_workers=self._worker_count)
+    self._monitoring_thread_pool = futures.ThreadPoolExecutor(max_workers=1)
     self._instruction_id_vs_worker = {}
     self._fns = {}
     self._responses = queue.Queue()
     self._process_bundle_queue = queue.Queue()
-    self._unscheduled_process_bundle = set()
+    self._unscheduled_process_bundle = {}
     logging.info('Initializing SDKHarness with %s workers.', self._worker_count)
 
   def run(self):
@@ -97,7 +103,10 @@ class SdkHarness(object):
           SdkWorker(
               state_handler_factory=self._state_handler_factory,
               data_channel_factory=self._data_channel_factory,
-              fns=self._fns))
+              fns=self._fns,
+              profiler_factory=self._profiler_factory))
+
+    self._monitoring_thread_pool.submit(self._monitor_process_bundle)
 
     def get_responses():
       while True:
@@ -116,9 +125,11 @@ class SdkHarness(object):
 
     logging.info('No more requests from control plane')
     logging.info('SDK Harness waiting for in-flight requests to complete')
+    self._alive = False
     # Wait until existing requests are processed.
     self._progress_thread_pool.shutdown()
     self._process_thread_pool.shutdown()
+    self._monitoring_thread_pool.shutdown(wait=False)
     # get_responses may be blocked on responses.get(), but we need to return
     # control to its caller.
     self._responses.put(no_more_work)
@@ -162,7 +173,7 @@ class SdkHarness(object):
       work = self._process_bundle_queue.get()
       # add the instuction_id vs worker map for progress reporting lookup
       self._instruction_id_vs_worker[work.instruction_id] = worker
-      self._unscheduled_process_bundle.discard(work.instruction_id)
+      self._unscheduled_process_bundle.pop(work.instruction_id, None)
       try:
         self._execute(lambda: worker.do_instruction(work), work)
       finally:
@@ -173,7 +184,7 @@ class SdkHarness(object):
 
     # Create a task for each process_bundle request and schedule it
     self._process_bundle_queue.put(request)
-    self._unscheduled_process_bundle.add(request.instruction_id)
+    self._unscheduled_process_bundle[request.instruction_id] = time.time()
     self._process_thread_pool.submit(task)
     logging.debug(
         "Currently using %s threads." % len(self._process_thread_pool._threads))
@@ -198,15 +209,39 @@ class SdkHarness(object):
 
     self._progress_thread_pool.submit(task)
 
+  def _monitor_process_bundle(self):
+    """
+    Monitor the unscheduled bundles and log if a bundle is not scheduled for
+    more than SCHEDULING_DELAY_THRESHOLD_SEC.
+    """
+    while self._alive:
+      time.sleep(SdkHarness.SCHEDULING_DELAY_THRESHOLD_SEC)
+      # Check for bundles to be scheduled.
+      if self._unscheduled_process_bundle:
+        current_time = time.time()
+        for instruction_id in self._unscheduled_process_bundle:
+          request_time = None
+          try:
+            request_time = self._unscheduled_process_bundle[instruction_id]
+          except KeyError:
+            pass
+          if request_time:
+            scheduling_delay = current_time - request_time
+            if scheduling_delay > SdkHarness.SCHEDULING_DELAY_THRESHOLD_SEC:
+              logging.warn('Unable to schedule instruction %s for %s',
+                           instruction_id, scheduling_delay)
+
 
 class SdkWorker(object):
 
-  def __init__(self, state_handler_factory, data_channel_factory, fns):
+  def __init__(self, state_handler_factory, data_channel_factory, fns,
+               profiler_factory=None):
     self.fns = fns
     self.state_handler_factory = state_handler_factory
     self.data_channel_factory = data_channel_factory
     self.active_bundle_processors = {}
     self.cached_bundle_processors = collections.defaultdict(list)
+    self.profiler_factory = profiler_factory
 
   def do_instruction(self, request):
     request_type = request.WhichOneof('request')
@@ -228,7 +263,8 @@ class SdkWorker(object):
     with self.get_bundle_processor(
         instruction_id,
         request.process_bundle_descriptor_reference) as bundle_processor:
-      bundle_processor.process_bundle(instruction_id)
+      with self.maybe_profile(instruction_id):
+        bundle_processor.process_bundle(instruction_id)
       return beam_fn_api_pb2.InstructionResponse(
           instruction_id=instruction_id,
           process_bundle=beam_fn_api_pb2.ProcessBundleResponse(
@@ -267,6 +303,18 @@ class SdkWorker(object):
         process_bundle_progress=beam_fn_api_pb2.ProcessBundleProgressResponse(
             metrics=processor.metrics() if processor else None,
             monitoring_infos=processor.monitoring_infos() if processor else []))
+
+  @contextlib.contextmanager
+  def maybe_profile(self, instruction_id):
+    if self.profiler_factory:
+      profiler = self.profiler_factory(instruction_id)
+      if profiler:
+        with profiler:
+          yield
+      else:
+        yield
+    else:
+      yield
 
 
 class StateHandlerFactory(with_metaclass(abc.ABCMeta, object)):

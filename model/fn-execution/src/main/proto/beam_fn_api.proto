@@ -186,6 +186,15 @@ message ProcessBundleDescriptor {
   org.apache.beam.model.pipeline.v1.ApiServiceDescriptor state_api_service_descriptor = 7;
 }
 
+
+// Represents a non-negative decimal number: unscaled_value * 10^(scale) (scientific notation)
+message Decimal {
+  // Represents the unscaled value as a big endian unlimited precision non-negative integer.
+  bytes unscaled_value = 1;
+  // Represents the scale
+  int32 scale = 2;
+}
+
 // One of the applications specifying the scope of work for a bundle.
 // See https://docs.google.com/document/d/1tUDb45sStdR8u7-jBkGdw3OGFK7aa2-V7eo86zYSE_4/edit#heading=h.9g3g5weg2u9 for further details.
 message BundleApplication {
@@ -219,10 +228,9 @@ message BundleApplication {
     bytes partition = 1;
 
     // The estimate for the backlog.
-    oneof value {
-      // Represents an estimate for the amount of outstanding work. Values
-      // compare lexicographically.
-      bytes bytes = 1000;
+    oneof backlog {
+      // Represents an estimate for the amount of outstanding work.
+      Decimal value = 1000;
 
       // Whether the backlog is unknown.
       bool is_unknown = 1001;
@@ -245,7 +253,7 @@ message BundleApplication {
   //
   // Each application is able to report information that some runners
   // will use consume when providing a UI or for making scaling and performance
-  // decisions. See https://s.apache.org/beam-bundles-backlog-splitting for 
+  // decisions. See https://s.apache.org/beam-bundles-backlog-splitting for
   // details about what types of signals may be useful to report.
   repeated MonitoringInfo monitoring_infos = 7;
 }
@@ -346,8 +354,9 @@ message MonitoringInfo {
 
 message MonitoringInfoUrns {
   enum Enum {
+    // User counter have this format: 'beam:metric:user:<namespace>:<name>'.
     USER_COUNTER_URN_PREFIX = 0 [(org.apache.beam.model.pipeline.v1.beam_urn) =
-        "beam:metric:user"];
+        "beam:metric:user:"];
 
     ELEMENT_COUNT = 1 [(org.apache.beam.model.pipeline.v1.beam_urn) =
         "beam:metric:element_count:v1"];
@@ -627,7 +636,7 @@ message ProcessBundleSplitRequest {
   // possible, effectively checkpointing when able. The remaining backlog
   // will be relative to the backlog reported during processing.
   //
-  // If the backlog is unspecified for a PTransform, the runner would like 
+  // If the backlog is unspecified for a PTransform, the runner would like
   // the SDK to process all data received for that PTransform.
   map<string, bytes> backlog_remaining = 2;
 }
