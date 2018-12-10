@@ -17,24 +17,25 @@
  */
 package org.apache.beam.sdk.io.elasticsearch;
 
-import static org.apache.beam.sdk.io.elasticsearch.ElasticsearchIO.ConnectionConfiguration;
-import static org.apache.beam.sdk.io.elasticsearch.ElasticsearchIOTestCommon.ES_INDEX;
-import static org.apache.beam.sdk.io.elasticsearch.ElasticsearchIOTestCommon.ES_TYPE;
-import static org.apache.beam.sdk.io.elasticsearch.ElasticsearchIOTestCommon.NUM_DOCS_ITESTS;
+import static org.apache.beam.sdk.io.elasticsearch.ElasticsearchHlrcIO.ConnectionConfiguration;
+import static org.apache.beam.sdk.io.elasticsearch.ElasticsearchHlrcIOTestCommon.ES_INDEX;
+import static org.apache.beam.sdk.io.elasticsearch.ElasticsearchHlrcIOTestCommon.ES_TYPE;
+import static org.apache.beam.sdk.io.elasticsearch.ElasticsearchHlrcIOTestCommon.NUM_DOCS_ITESTS;
 
 import org.apache.beam.sdk.options.Default;
 import org.apache.beam.sdk.options.Description;
 import org.apache.beam.sdk.options.PipelineOptionsFactory;
 import org.apache.beam.sdk.testing.TestPipelineOptions;
+import org.apache.http.HttpHost;
 import org.elasticsearch.client.RestHighLevelClient;
 
 /**
- * Manipulates test data used by the {@link ElasticsearchIO} integration tests.
+ * Manipulates test data used by the {@link ElasticsearchHlrcIO} integration tests.
  *
  * <p>This is independent from the tests so that for read tests it can be run separately after data
  * store creation rather than every time (which can be more fragile.)
  */
-public class ElasticsearchIOITCommon {
+public class ElasticsearchHlrcIOITCommon {
 
   /** Pipeline options for elasticsearch tests. */
   public interface ElasticsearchPipelineOptions extends TestPipelineOptions {
@@ -77,7 +78,7 @@ public class ElasticsearchIOITCommon {
    *
    * <pre>
    * mvn test-compile exec:java \
-   * -Dexec.mainClass=org.apache.beam.sdk.io.elasticsearch.ElasticsearchIOITCommon \
+   * -Dexec.mainClass=org.apache.beam.sdk.io.elasticsearch.ElasticsearchHlrcIOITCommon \
    * -Dexec.args="--elasticsearchServer=127.0.0.1 \
    * --elasticsearchHttpPort=9200" \
    * -Dexec.classpathScope=test
@@ -99,7 +100,7 @@ public class ElasticsearchIOITCommon {
     ConnectionConfiguration connectionConfiguration =
         getConnectionConfiguration(options, IndexMode.READ);
     try (RestHighLevelClient restClient = connectionConfiguration.createClient()) {
-      ElasticSearchIOTestUtils.insertTestDocuments(
+      ElasticSearchHlrcIOTestUtils.insertTestDocuments(
           connectionConfiguration, NUM_DOCS_ITESTS, restClient);
     }
   }
@@ -107,10 +108,7 @@ public class ElasticsearchIOITCommon {
   static ConnectionConfiguration getConnectionConfiguration(
       ElasticsearchPipelineOptions options, IndexMode mode) {
     return ConnectionConfiguration.create(
-        new String[] {
-            "http://" + options.getElasticsearchServer() + ":" + options.getElasticsearchHttpPort()
-        },
         mode.getIndex(),
-        ES_TYPE);
+        new HttpHost(options.getElasticsearchServer(),options.getElasticsearchHttpPort()));
   }
 }

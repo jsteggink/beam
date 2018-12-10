@@ -18,7 +18,7 @@
 package org.apache.beam.sdk.io.elasticsearch;
 
 import static junit.framework.TestCase.assertEquals;
-import static org.apache.beam.sdk.io.elasticsearch.ElasticsearchIO.ConnectionConfiguration;
+import static org.apache.beam.sdk.io.elasticsearch.ElasticsearchHlrcIO.ConnectionConfiguration;
 import static org.apache.beam.sdk.testing.SourceTestUtils.readFromSource;
 
 import java.util.List;
@@ -27,20 +27,19 @@ import org.apache.beam.sdk.options.PipelineOptionsFactory;
 import org.apache.beam.sdk.testing.SourceTestUtils;
 import org.apache.beam.sdk.testing.TestPipeline;
 import org.elasticsearch.client.RestHighLevelClient;
+import org.elasticsearch.index.query.QueryBuilders;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
-import org.junit.FixMethodOrder;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.runners.MethodSorters;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * A test of {@link ElasticsearchIO} on an independent Elasticsearch v6.x instance.
+ * A test of {@link ElasticsearchHlrcIO} on an independent Elasticsearch v6.x instance.
  *
  * <p>This test requires a running instance of Elasticsearch, and the test dataset must exist in the
- * database. See {@link ElasticsearchIOITCommon} for instructions to achieve this.
+ * database. See {@link ElasticsearchHlrcIOITCommon} for instructions to achieve this.
  *
  * <p>You can run this test by doing the following from the beam parent module directory with the
  * correct server IP:
@@ -50,64 +49,65 @@ import org.slf4j.LoggerFactory;
  *  -DintegrationTestPipelineOptions='[
  *  "--elasticsearchServer=1.2.3.4",
  *  "--elasticsearchHttpPort=9200"]'
- *  --tests org.apache.beam.sdk.io.elasticsearch.ElasticsearchIOIT
+ *  --tests org.apache.beam.sdk.io.elasticsearch.ElasticsearchHlrcIOIT
  *  -DintegrationTestRunner=direct
  * </pre>
  *
  * <p>It is likely that you will need to configure <code>thread_pool.bulk.queue_size: 250</code> (or
  * higher) in the backend Elasticsearch server for this test to run.
  */
-public class ElasticsearchIOIT {
-  private static final Logger LOG = LoggerFactory.getLogger(ElasticsearchIOIT.class);
+public class ElasticsearchHlrcIOIT {
+  private static final Logger LOG = LoggerFactory.getLogger(ElasticsearchHlrcIOIT.class);
 
   private static RestHighLevelClient restClient;
-  private static ElasticsearchIOITCommon.ElasticsearchPipelineOptions options;
+  private static ElasticsearchHlrcIOITCommon.ElasticsearchPipelineOptions options;
   private static ConnectionConfiguration readConnectionConfiguration;
   private static ConnectionConfiguration writeConnectionConfiguration;
   private static ConnectionConfiguration updateConnectionConfiguration;
-  private static ElasticsearchIOTestCommon elasticsearchIOTestCommon;
+  private static ElasticsearchHlrcIOTestCommon elasticsearchHLRCIOTestCommon;
 
   @Rule public TestPipeline pipeline = TestPipeline.create();
 
   @BeforeClass
   public static void beforeClass() throws Exception {
-    PipelineOptionsFactory.register(ElasticsearchIOITCommon.ElasticsearchPipelineOptions.class);
-    options = TestPipeline.testingPipelineOptions().as(ElasticsearchIOITCommon.ElasticsearchPipelineOptions.class);
+    PipelineOptionsFactory.register(ElasticsearchHlrcIOITCommon.ElasticsearchPipelineOptions.class);
+    options =
+        TestPipeline.testingPipelineOptions()
+            .as(ElasticsearchHlrcIOITCommon.ElasticsearchPipelineOptions.class);
     readConnectionConfiguration =
-        ElasticsearchIOITCommon.getConnectionConfiguration(
-            options, ElasticsearchIOITCommon.IndexMode.READ);
+        ElasticsearchHlrcIOITCommon.getConnectionConfiguration(
+            options, ElasticsearchHlrcIOITCommon.IndexMode.READ);
     writeConnectionConfiguration =
-        ElasticsearchIOITCommon.getConnectionConfiguration(
-            options, ElasticsearchIOITCommon.IndexMode.WRITE);
+        ElasticsearchHlrcIOITCommon.getConnectionConfiguration(
+            options, ElasticsearchHlrcIOITCommon.IndexMode.WRITE);
     updateConnectionConfiguration =
-        ElasticsearchIOITCommon.getConnectionConfiguration(
-            options, ElasticsearchIOITCommon.IndexMode.WRITE_PARTIAL);
+        ElasticsearchHlrcIOITCommon.getConnectionConfiguration(
+            options, ElasticsearchHlrcIOITCommon.IndexMode.WRITE_PARTIAL);
     restClient = readConnectionConfiguration.createClient();
-    elasticsearchIOTestCommon =
-        new ElasticsearchIOTestCommon(readConnectionConfiguration, restClient, true);
+    elasticsearchHLRCIOTestCommon =
+        new ElasticsearchHlrcIOTestCommon(readConnectionConfiguration, restClient, true);
   }
 
   @AfterClass
   public static void afterClass() throws Exception {
     System.out.println("Deleting index.");
-    ElasticSearchIOTestUtils.deleteIndex(restClient, writeConnectionConfiguration.getIndex());
+    ElasticSearchHlrcIOTestUtils.deleteIndex(restClient, writeConnectionConfiguration.getIndex());
     restClient.close();
   }
 
   @Test
   public void testSplitsVolume() throws Exception {
     LOG.info("testSplitsVolume test");
-    ElasticsearchIO.Read read = ElasticsearchIO.read()
-        .withConnectionConfiguration(readConnectionConfiguration);
-    ElasticsearchIO.BoundedElasticsearchSource initialSource =
-        new ElasticsearchIO
-            .BoundedElasticsearchSource(read, null, null, null);
+    String query = QueryBuilders.matchAllQuery().toString();
+    ElasticsearchHlrcIO.Read read =
+        ElasticsearchHlrcIO.read(readConnectionConfiguration, query);
+    ElasticsearchHlrcIO.BoundedElasticsearchSource initialSource =
+        new ElasticsearchHlrcIO.BoundedElasticsearchSource(read, null, null);
     int desiredBundleSizeBytes = 10000;
     List<? extends BoundedSource<String>> splits =
         initialSource.split(desiredBundleSizeBytes, options);
     SourceTestUtils.assertSourcesEqualReferenceSource(initialSource, splits, options);
-    long indexSize = ElasticsearchIO.BoundedElasticsearchSource
-        .estimateIndexSize(readConnectionConfiguration);
+    long indexSize = initialSource.estimateIndexSize(query);
     float expectedNumSourcesFloat = (float) indexSize / desiredBundleSizeBytes;
     int expectedNumSources = (int) Math.ceil(expectedNumSourcesFloat);
     assertEquals(expectedNumSources, splits.size());
@@ -123,24 +123,18 @@ public class ElasticsearchIOIT {
   @Test
   public void testReadVolume() throws Exception {
     LOG.info("testReadVolume test");
-    elasticsearchIOTestCommon.setPipeline(pipeline);
-    elasticsearchIOTestCommon.testRead();
+    elasticsearchHLRCIOTestCommon.setPipeline(pipeline);
+    elasticsearchHLRCIOTestCommon.testRead();
   }
 
   @Test
   public void testWriteVolume() throws Exception {
     LOG.info("testWriteVolume test");
-    // cannot share elasticsearchIOTestCommon because tests run in parallel.
-    ElasticsearchIOTestCommon elasticsearchIOTestCommonWrite =
-        new ElasticsearchIOTestCommon(writeConnectionConfiguration, restClient, true);
-    elasticsearchIOTestCommonWrite.setPipeline(pipeline);
-    elasticsearchIOTestCommonWrite.testWrite();
-  }
-
-  @Test
-  public void testSizesVolume() throws Exception {
-    LOG.info("testSizesVolume test");
-    elasticsearchIOTestCommon.testSizes();
+    // cannot share elasticsearchHLRCIOTestCommon because tests run in parallel.
+    ElasticsearchHlrcIOTestCommon elasticsearchHlrcIOTestCommonWrite =
+        new ElasticsearchHlrcIOTestCommon(writeConnectionConfiguration, restClient, true);
+    elasticsearchHlrcIOTestCommonWrite.setPipeline(pipeline);
+    elasticsearchHlrcIOTestCommonWrite.testWrite();
   }
 
   /**
@@ -150,14 +144,14 @@ public class ElasticsearchIOIT {
    */
   @Test
   public void testWritePartialUpdate() throws Exception {
-    ElasticSearchIOTestUtils.copyIndex(
+    ElasticSearchHlrcIOTestUtils.copyIndex(
         restClient,
         readConnectionConfiguration.getIndex(),
         updateConnectionConfiguration.getIndex());
-    // cannot share elasticsearchIOTestCommon because tests run in parallel.
-    ElasticsearchIOTestCommon elasticsearchIOTestCommonUpdate =
-        new ElasticsearchIOTestCommon(updateConnectionConfiguration, restClient, true);
-    elasticsearchIOTestCommonUpdate.setPipeline(pipeline);
-    elasticsearchIOTestCommonUpdate.testWritePartialUpdate();
+    // cannot share elasticsearchHLRCIOTestCommon because tests run in parallel.
+    ElasticsearchHlrcIOTestCommon elasticsearchHlrcIOTestCommonUpdate =
+        new ElasticsearchHlrcIOTestCommon(updateConnectionConfiguration, restClient, true);
+    elasticsearchHlrcIOTestCommonUpdate.setPipeline(pipeline);
+    elasticsearchHlrcIOTestCommonUpdate.testWritePartialUpdate();
   }
 }

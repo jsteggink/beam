@@ -27,63 +27,64 @@ import org.apache.beam.sdk.coders.CannotProvideCoderException;
 import org.apache.beam.sdk.coders.Coder;
 import org.apache.beam.sdk.coders.CoderProvider;
 import org.apache.beam.sdk.values.TypeDescriptor;
-import org.elasticsearch.action.DocWriteRequest;
 import org.elasticsearch.common.io.stream.BytesStreamOutput;
 import org.elasticsearch.common.io.stream.InputStreamStreamInput;
 import org.elasticsearch.common.io.stream.StreamInput;
+import org.elasticsearch.index.query.QueryBuilder;
+import org.elasticsearch.index.query.WrapperQueryBuilder;
 
-/** A {@link Coder} that serializes and deserializes the {@link DocWriteRequest} objects. }. */
-class ESDocWriteRequestCoder extends AtomicCoder<DocWriteRequest> implements Serializable {
-  private static final ESDocWriteRequestCoder INSTANCE = new ESDocWriteRequestCoder();
+/** A {@link Coder} that serializes and deserializes the {@link QueryBuilder} objects. }. */
+class ESQueryBuilderCoder extends AtomicCoder<QueryBuilder> implements Serializable {
+  private static final ESQueryBuilderCoder INSTANCE = new ESQueryBuilderCoder();
 
-  private ESDocWriteRequestCoder() {}
+  private ESQueryBuilderCoder() {}
 
-  public static ESDocWriteRequestCoder of() {
+  public static ESQueryBuilderCoder of() {
     return INSTANCE;
   }
 
   @Override
-  public void encode(DocWriteRequest docWriteRequest, OutputStream outStream) throws IOException {
+  public void encode(QueryBuilder queryBuilder, OutputStream outStream) throws IOException {
     BytesStreamOutput streamOutput = new BytesStreamOutput();
-    DocWriteRequest.writeDocumentRequest(streamOutput, docWriteRequest);
+    queryBuilder.writeTo(streamOutput);
     streamOutput.bytes().writeTo(outStream);
   }
 
   @Override
-  public DocWriteRequest decode(InputStream inStream) throws IOException {
+  public QueryBuilder decode(InputStream inStream) throws IOException {
     StreamInput streamInput = new InputStreamStreamInput(inStream);
-    return DocWriteRequest.readDocumentRequest(streamInput);
+    return new WrapperQueryBuilder(streamInput);
   }
 
   /**
-   * Returns a {@link CoderProvider} which uses the {@link ESDocWriteRequestCoder} for {@link
-   * DocWriteRequest docWriteRequests}.
+   * Returns a {@link CoderProvider} which uses the {@link ESQueryBuilderCoder} for {@link
+   * QueryBuilder queryBuilder}.
    */
   static CoderProvider getCoderProvider() {
-    return ES_DOCWRITEREQUEST_CODER_PROVIDER;
+    return QUERYBUILDER_CODER_PROVIDER;
   }
 
-  private static final CoderProvider ES_DOCWRITEREQUEST_CODER_PROVIDER =
-      new ESDocWriteRequestCoderProvider();
+  private static final CoderProvider QUERYBUILDER_CODER_PROVIDER =
+      new QueryBuilderCoderProvider();
 
-  /** A {@link CoderProvider} for {@link DocWriteRequest docWriteRequests}. */
-  private static class ESDocWriteRequestCoderProvider extends CoderProvider {
+  /** A {@link CoderProvider} for {@link QueryBuilder queryBuilder}. */
+  private static class QueryBuilderCoderProvider extends CoderProvider {
     @Override
     public <T> Coder<T> coderFor(
         TypeDescriptor<T> typeDescriptor, List<? extends Coder<?>> componentCoders)
         throws CannotProvideCoderException {
-      if (!typeDescriptor.isSubtypeOf(ES_DOCWRITEREQUEST_TYPE_DESCRIPTOR)) {
+      if (!typeDescriptor.isSubtypeOf(QUERYBUILDER_TYPE_DESCRIPTOR)) {
         throw new CannotProvideCoderException(
             String.format(
                 "Cannot provide %s because %s is not a subclass of %s",
-                ESDocWriteRequestCoder.class.getSimpleName(),
+                ESQueryBuilderCoder.class.getSimpleName(),
                 typeDescriptor,
-                DocWriteRequest.class.getName()));
+                QueryBuilder.class.getName()));
       }
 
       try {
         @SuppressWarnings("unchecked")
-        Coder<T> coder = (Coder<T>) ESDocWriteRequestCoder.of();
+        Coder<T> coder = (Coder<T>) ESQueryBuilderCoder.of();
         return coder;
       } catch (IllegalArgumentException e) {
         throw new CannotProvideCoderException(e);
@@ -91,6 +92,6 @@ class ESDocWriteRequestCoder extends AtomicCoder<DocWriteRequest> implements Ser
     }
   }
 
-  private static final TypeDescriptor<DocWriteRequest> ES_DOCWRITEREQUEST_TYPE_DESCRIPTOR =
-      new TypeDescriptor<DocWriteRequest>() {};
+  private static final TypeDescriptor<QueryBuilder> QUERYBUILDER_TYPE_DESCRIPTOR =
+      new TypeDescriptor<QueryBuilder>() {};
 }

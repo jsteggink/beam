@@ -15,16 +15,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.beam.sdk.io.elasticsearch;
 
-import static org.apache.beam.sdk.io.elasticsearch.ElasticsearchIO.ConnectionConfiguration;
-import static org.apache.beam.sdk.io.elasticsearch.ElasticsearchIO.parseResponse;
+import static org.apache.beam.sdk.io.elasticsearch.ElasticsearchHlrcIO.ConnectionConfiguration;
+import static org.junit.Assert.assertEquals;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import org.apache.http.HttpEntity;
 import org.apache.http.entity.ContentType;
@@ -35,37 +33,42 @@ import org.elasticsearch.action.admin.indices.create.CreateIndexRequest;
 import org.elasticsearch.action.admin.indices.create.CreateIndexResponse;
 import org.elasticsearch.action.admin.indices.delete.DeleteIndexRequest;
 import org.elasticsearch.action.admin.indices.delete.DeleteIndexResponse;
+import org.elasticsearch.action.admin.indices.refresh.RefreshRequest;
+import org.elasticsearch.action.admin.indices.refresh.RefreshResponse;
 import org.elasticsearch.action.bulk.BulkRequest;
+import org.elasticsearch.action.bulk.BulkResponse;
 import org.elasticsearch.action.index.IndexRequest;
 import org.elasticsearch.action.search.SearchRequest;
 import org.elasticsearch.action.search.SearchResponse;
+import org.elasticsearch.client.Request;
+import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.client.Response;
 import org.elasticsearch.client.RestClient;
 import org.elasticsearch.client.RestHighLevelClient;
-import org.elasticsearch.common.xcontent.XContentType;
+import org.elasticsearch.common.settings.Settings;
+import org.elasticsearch.common.xcontent.XContentBuilder;
+import org.elasticsearch.common.xcontent.XContentFactory;
 import org.elasticsearch.index.query.QueryBuilders;
-import org.elasticsearch.index.reindex.ReindexRequest;
-import org.elasticsearch.index.reindex.ReindexRequestBuilder;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** Test utilities to use with {@link ElasticsearchIO}. */
-class ElasticSearchIOTestUtils {
+/** Test utilities to use with {@link ElasticsearchHlrcIO}. */
+class ElasticSearchHlrcIOTestUtils {
 
-  private static final Logger LOG = LoggerFactory.getLogger(ElasticSearchIOTestUtils.class);
+  private static final Logger LOG = LoggerFactory.getLogger(ElasticSearchHlrcIOTestUtils.class);
 
   static final String[] FAMOUS_SCIENTISTS = {
-      "Einstein",
-      "Darwin",
-      "Copernicus",
-      "Pasteur",
-      "Curie",
-      "Faraday",
-      "Newton",
-      "Bohr",
-      "Galilei",
-      "Maxwell"
+    "Einstein",
+    "Darwin",
+    "Copernicus",
+    "Pasteur",
+    "Curie",
+    "Faraday",
+    "Newton",
+    "Bohr",
+    "Galilei",
+    "Maxwell"
   };
   static final int NUM_SCIENTISTS = FAMOUS_SCIENTISTS.length;
 
@@ -76,21 +79,35 @@ class ElasticSearchIOTestUtils {
   }
 
   /** Create the given index synchronously. */
-  static void createIndex(ConnectionConfiguration connectionConfiguration,
-      RestHighLevelClient restClient) throws IOException {
+  static CreateIndexResponse createIndex(
+      ConnectionConfiguration connectionConfiguration, RestHighLevelClient restHighLevelClient)
+      throws IOException {
+    return createIndex(connectionConfiguration, restHighLevelClient, Settings.EMPTY);
+  }
+
+  /** Create the given index synchronously with settings. */
+  static CreateIndexResponse createIndex(
+      ConnectionConfiguration connectionConfiguration, RestHighLevelClient restHighLevelClient,
+      Settings settings)
+      throws IOException {
     try {
-    CreateIndexResponse response = restClient.indices().create(new CreateIndexRequest
-        (connectionConfiguration.getIndex()));
+      return
+          restHighLevelClient.indices().create(new CreateIndexRequest(connectionConfiguration.getIndex(),
+                  settings),
+              RequestOptions.DEFAULT);
     } catch (ElasticsearchException e) {
       LOG.warn(e.getMessage());
     }
+    return null;
   }
 
   /** Deletes the given index synchronously. */
-  static void deleteIndex(RestHighLevelClient restHighLevelClient, String index) throws IOException {
+  static void deleteIndex(RestHighLevelClient restHighLevelClient, String index)
+      throws IOException {
     try {
-      DeleteIndexResponse response = restHighLevelClient.indices().delete(new DeleteIndexRequest
-        (index));
+      DeleteIndexResponse response =
+          restHighLevelClient.indices().delete(new DeleteIndexRequest(index),
+              RequestOptions.DEFAULT);
     } catch (ElasticsearchException e) {
       LOG.warn(e.getMessage());
     }
@@ -100,38 +117,45 @@ class ElasticSearchIOTestUtils {
    * Synchronously deletes the target if it exists and then (re)creates it as a copy of source
    * synchronously.
    */
-  static void copyIndex(RestHighLevelClient restClient, String source, String target) throws IOException {
-    deleteIndex(restClient, target);
+  static void copyIndex(RestHighLevelClient restHighLevelClient, String source, String target)
+      throws IOException {
+    deleteIndex(restHighLevelClient, target);
     HttpEntity entity =
         new NStringEntity(
             String.format(
                 "{\"source\" : { \"index\" : \"%s\" }, \"dest\" : { \"index\" : \"%s\" } }",
                 source, target),
             ContentType.APPLICATION_JSON);
-    restClient.getLowLevelClient().performRequest("POST", "/_reindex", Collections.EMPTY_MAP, entity);
+    Request request = new Request("POST", "/_reindex");
+    request.setEntity(entity);
+    restHighLevelClient
+        .getLowLevelClient()
+        .performRequest(request);
   }
 
   /** Inserts the given number of test documents into Elasticsearch. */
-  static void insertTestDocuments(ConnectionConfiguration connectionConfiguration,
-      long numDocs, RestHighLevelClient restHighLevelClient) throws IOException {
-    RestClient restClient = restHighLevelClient.getLowLevelClient();
+  static void insertTestDocuments(
+      ConnectionConfiguration connectionConfiguration,
+      long numDocs,
+      RestHighLevelClient restHighLevelClient)
+      throws IOException {
+
     List<DocWriteRequest> data =
-        ElasticSearchIOTestUtils.createDocuments(
+        ElasticSearchHlrcIOTestUtils.createDocuments(
             numDocs, InjectionMode.DO_NOT_INJECT_INVALID_DOCS, connectionConfiguration.getIndex());
-    StringBuilder bulkRequest = new StringBuilder();
+
     int i = 0;
-    for (DocWriteRequest document : data) {
-      bulkRequest.append(String.format(
-          "{ \"index\" : { \"_index\" : \"%s\", \"_type\" : \"%s\", \"_id\" : \"%s\" } }%n%s%n",
-          connectionConfiguration.getIndex(), connectionConfiguration.getType(), i++, document));
+    BulkRequest request = new BulkRequest();
+    request.timeout("2m");
+    for (DocWriteRequest docWriteRequest : data) {
+      request.add(docWriteRequest);
     }
-    String endPoint = String.format("/%s/%s/_bulk", connectionConfiguration.getIndex(),
-        connectionConfiguration.getType());
-    HttpEntity requestBody =
-        new NStringEntity(bulkRequest.toString(), ContentType.APPLICATION_JSON);
-    Response response = restClient.performRequest("POST", endPoint,
-        Collections.singletonMap("refresh", "true"), requestBody);
-    ElasticsearchIO.checkForErrors(response);
+
+    BulkResponse bulkResponse = restHighLevelClient.bulk(request, RequestOptions.DEFAULT);
+
+    if(bulkResponse.hasFailures()) {
+      LOG.error("Bulk had failures.");
+    }
   }
 
   /**
@@ -140,29 +164,20 @@ class ElasticSearchIOTestUtils {
    * @return The number of docs in the index
    */
   static long refreshIndexAndGetCurrentNumDocs(
-      ConnectionConfiguration connectionConfiguration,
-      RestHighLevelClient restHighLevelClient) throws IOException {
-    RestClient restClient = restHighLevelClient.getLowLevelClient();
-    long result = 0;
-    try {
-      String endPoint = String.format("/%s/_refresh", connectionConfiguration.getIndex());
-      restClient.performRequest("POST", endPoint);
+      ConnectionConfiguration connectionConfiguration, RestHighLevelClient restHighLevelClient)
+      throws IOException {
 
-      endPoint = String.format("/%s/%s/_search", connectionConfiguration.getIndex(),
-          connectionConfiguration.getType());
-      Response response = restClient.performRequest("GET", endPoint);
-      JsonNode searchResult = ElasticsearchIO.parseResponse(response);
-      result = searchResult.path("hits").path("total").asLong();
-    } catch (IOException e) {
-      // it is fine to ignore bellow exceptions because in testWriteWithBatchSize* sometimes,
-      // we call upgrade before any doc have been written
-      // (when there are fewer docs processed than batchSize).
-      // In that cases index/type has not been created (created upon first doc insertion)
-      if (!e.getMessage().contains("index_not_found_exception")) {
-        throw e;
-      }
-    }
-    return result;
+      RefreshRequest request = new RefreshRequest(connectionConfiguration.getIndex());
+
+      restHighLevelClient.indices().refresh(request, RequestOptions.DEFAULT);
+
+      SearchRequest searchRequest = new SearchRequest();
+      SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
+      searchSourceBuilder.query(QueryBuilders.matchAllQuery());
+      searchRequest.source(searchSourceBuilder);
+      SearchResponse searchResponse = restHighLevelClient.search(searchRequest, RequestOptions.DEFAULT);
+
+      return searchResponse.getHits().getTotalHits();
   }
 
   /**
@@ -172,26 +187,29 @@ class ElasticSearchIOTestUtils {
    * @param injectionMode {@link InjectionMode} that specifies whether to insert malformed documents
    * @return the list of DocWriteRequests representing the documents
    */
-  static List<DocWriteRequest> createDocuments(long numDocs, InjectionMode injectionMode,
-      String indexName) {
+  static List<DocWriteRequest> createDocuments(
+      long numDocs, InjectionMode injectionMode, String indexName) throws IOException {
 
     ArrayList<DocWriteRequest> data = new ArrayList<>();
     for (int i = 0; i < numDocs; i++) {
       int index = i % FAMOUS_SCIENTISTS.length;
-      // insert 2 malformed documents
-      if (InjectionMode.INJECT_SOME_INVALID_DOCS.equals(injectionMode) && (i == 6 || i == 7)) {
         IndexRequest doc = new IndexRequest(indexName, "_doc", Integer.toString(i));
-        doc.source(String.format("{\"scientist\";\"%s\", \"id\":%s}",
-            FAMOUS_SCIENTISTS[index], i), XContentType.JSON);
-        data.add(doc);
+        XContentBuilder builder = XContentFactory.jsonBuilder();
+       builder.startObject();
+       {
+          builder.field("scientist", FAMOUS_SCIENTISTS[index]);
+       }
+       builder.endObject();
+       doc.source(builder);
+       data.add(doc);
 
-      } else {
-        IndexRequest doc = new IndexRequest(indexName, "_doc", Integer.toString(i));
-        doc.source(String.format("{\"scientist\":\"%s\", \"id\":%s}",
-            FAMOUS_SCIENTISTS[index], i), XContentType.JSON);
-        data.add(doc);
+       if (injectionMode == InjectionMode.INJECT_SOME_INVALID_DOCS) {
+         doc = new IndexRequest(indexName, "_doc", Integer.toString(i));
+         doc.source(String.format("{non working doc %s]", i));
+         data.add(doc);
+       }
       }
-    }
+
     return data;
   }
 
@@ -199,23 +217,24 @@ class ElasticSearchIOTestUtils {
    * Executes a query for the named scientist and returns the count from the result.
    *
    * @param connectionConfiguration Specifies the index and type
-   * @param restClient To use to execute the call
+   * @param restHighLevelClient To use to execute the call
    * @param scientistName The scientist to query for
    * @return The cound of documents found
    * @throws IOException On error talking to Elasticsearch
    */
   static long countByScientistName(
-      ConnectionConfiguration connectionConfiguration, RestHighLevelClient restClient, String
-      scientistName)
+      ConnectionConfiguration connectionConfiguration,
+      RestHighLevelClient restHighLevelClient,
+      String scientistName)
       throws IOException {
-    return countByMatch(connectionConfiguration, restClient, "scientist", scientistName);
+    return countByMatch(connectionConfiguration, restHighLevelClient, "scientist", scientistName);
   }
 
   /**
    * Executes a match query for given field/value and returns the count of results.
    *
    * @param connectionConfiguration Specifies the index and type
-   * @param restClient To use to execute the call
+   * @param restHighLevelClient To use to execute the call
    * @param field The field to query
    * @param value The value to match
    * @return The count of documents in the search result
@@ -223,7 +242,7 @@ class ElasticSearchIOTestUtils {
    */
   static long countByMatch(
       ConnectionConfiguration connectionConfiguration,
-      RestHighLevelClient restClient,
+      RestHighLevelClient restHighLevelClient,
       String field,
       String value)
       throws IOException {
@@ -232,7 +251,7 @@ class ElasticSearchIOTestUtils {
     SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
     searchSourceBuilder.query(QueryBuilders.matchQuery(field, value));
     searchRequest.source(searchSourceBuilder);
-    SearchResponse searchResponse = restClient.search(searchRequest);
+    SearchResponse searchResponse = restHighLevelClient.search(searchRequest, RequestOptions.DEFAULT);
     return searchResponse.getHits().totalHits;
   }
 }
