@@ -48,11 +48,6 @@ import com.google.api.services.dataflow.model.PartialGroupByKeyInstruction;
 import com.google.api.services.dataflow.model.ReadInstruction;
 import com.google.api.services.dataflow.model.Source;
 import com.google.api.services.dataflow.model.WriteInstruction;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Iterables;
-import com.google.common.graph.MutableNetwork;
-import com.google.common.graph.Network;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -92,6 +87,7 @@ import org.apache.beam.sdk.fn.IdGenerators;
 import org.apache.beam.sdk.options.PipelineOptions;
 import org.apache.beam.sdk.options.PipelineOptionsFactory;
 import org.apache.beam.sdk.transforms.DoFn;
+import org.apache.beam.sdk.transforms.DoFnSchemaInformation;
 import org.apache.beam.sdk.transforms.Sum;
 import org.apache.beam.sdk.transforms.windowing.IntervalWindow.IntervalWindowCoder;
 import org.apache.beam.sdk.util.AppliedCombineFn;
@@ -103,6 +99,11 @@ import org.apache.beam.sdk.util.WindowedValue;
 import org.apache.beam.sdk.util.WindowedValue.FullWindowedValueCoder;
 import org.apache.beam.sdk.values.TupleTag;
 import org.apache.beam.sdk.values.WindowingStrategy;
+import org.apache.beam.vendor.guava.v20_0.com.google.common.collect.ImmutableList;
+import org.apache.beam.vendor.guava.v20_0.com.google.common.collect.ImmutableSet;
+import org.apache.beam.vendor.guava.v20_0.com.google.common.collect.Iterables;
+import org.apache.beam.vendor.guava.v20_0.com.google.common.graph.MutableNetwork;
+import org.apache.beam.vendor.guava.v20_0.com.google.common.graph.Network;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -482,7 +483,8 @@ public class IntrinsicMapTaskExecutorFactoryTest {
                     WindowingStrategy.globalDefault(),
                     null /* side input views */,
                     null /* input coder */,
-                    new TupleTag<>(PropertyNames.OUTPUT) /* main output id */)));
+                    new TupleTag<>(PropertyNames.OUTPUT) /* main output id */,
+                    DoFnSchemaInformation.create())));
 
     CloudObject cloudUserFn = CloudObject.forClassName("DoFn");
     addString(cloudUserFn, PropertyNames.SERIALIZED_FN, serializedFn);

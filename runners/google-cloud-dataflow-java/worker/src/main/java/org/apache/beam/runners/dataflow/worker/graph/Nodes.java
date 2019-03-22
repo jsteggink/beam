@@ -17,7 +17,7 @@
  */
 package org.apache.beam.runners.dataflow.worker.graph;
 
-import static com.google.common.base.Preconditions.checkNotNull;
+import static org.apache.beam.vendor.guava.v20_0.com.google.common.base.Preconditions.checkNotNull;
 
 import com.google.api.client.json.GenericJson;
 import com.google.api.client.json.JsonFactory;
@@ -27,7 +27,6 @@ import com.google.api.services.dataflow.model.InstructionOutput;
 import com.google.api.services.dataflow.model.ParallelInstruction;
 import com.google.api.services.dataflow.model.SideInputInfo;
 import com.google.auto.value.AutoValue;
-import com.google.common.base.MoreObjects;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -43,6 +42,7 @@ import org.apache.beam.sdk.coders.Coder;
 import org.apache.beam.sdk.util.Transport;
 import org.apache.beam.sdk.values.PCollectionView;
 import org.apache.beam.sdk.values.WindowingStrategy;
+import org.apache.beam.vendor.guava.v20_0.com.google.common.base.MoreObjects;
 
 /** Container class for different types of network nodes. All nodes only have reference equality. */
 public class Nodes {
@@ -319,16 +319,25 @@ public class Nodes {
   public abstract static class ExecutableStageNode extends Node {
     public static ExecutableStageNode create(
         ExecutableStage executableStage,
-        Map<String, NameContext> ptransformIdToPartialNameContextMap) {
+        Map<String, NameContext> ptransformIdToPartialNameContextMap,
+        Map<String, Iterable<SideInputInfo>> ptransformIdToSideInputInfoMap,
+        Map<String, Iterable<PCollectionView<?>>> pTransformIdToPCollectionViewMap) {
       checkNotNull(executableStage);
       checkNotNull(ptransformIdToPartialNameContextMap);
       return new AutoValue_Nodes_ExecutableStageNode(
-          executableStage, ptransformIdToPartialNameContextMap);
+          executableStage,
+          ptransformIdToPartialNameContextMap,
+          ptransformIdToSideInputInfoMap,
+          pTransformIdToPCollectionViewMap);
     }
 
     public abstract ExecutableStage getExecutableStage();
 
     public abstract Map<String, NameContext> getPTransformIdToPartialNameContextMap();
+
+    public abstract Map<String, Iterable<SideInputInfo>> getPTransformIdToSideInputInfoMap();
+
+    public abstract Map<String, Iterable<PCollectionView<?>>> getPTransformIdToPCollectionViewMap();
 
     @Override
     public String toString() {

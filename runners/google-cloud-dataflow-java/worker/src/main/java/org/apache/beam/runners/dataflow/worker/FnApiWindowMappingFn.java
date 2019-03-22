@@ -17,12 +17,9 @@
  */
 package org.apache.beam.runners.dataflow.worker;
 
-import static com.google.common.base.Preconditions.checkState;
+import static org.apache.beam.vendor.guava.v20_0.com.google.common.base.Preconditions.checkState;
 
 import com.google.auto.value.AutoValue;
-import com.google.common.base.Strings;
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
 import java.io.IOException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -60,6 +57,9 @@ import org.apache.beam.sdk.util.MoreFutures;
 import org.apache.beam.sdk.util.WindowedValue;
 import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.WindowingStrategy;
+import org.apache.beam.vendor.guava.v20_0.com.google.common.base.Strings;
+import org.apache.beam.vendor.guava.v20_0.com.google.common.cache.Cache;
+import org.apache.beam.vendor.guava.v20_0.com.google.common.cache.CacheBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -270,17 +270,21 @@ class FnApiWindowMappingFn<TargetWindowT extends BoundedWindow>
       waitForInboundTermination.awaitCompletion();
       WindowedValue<KV<byte[], TargetWindowT>> sideInputWindow = outputValue.poll();
       checkState(
-          sideInputWindow != null
-              && sideInputWindow.getValue() != null
-              && sideInputWindow.getValue().getValue() != null,
+          sideInputWindow != null,
           "Expected side input window to have been emitted by SDK harness.");
+      checkState(
+          sideInputWindow.getValue() != null,
+          "Side input window emitted by SDK harness was a WindowedValue with no value in it.");
+      checkState(
+          sideInputWindow.getValue().getValue() != null,
+          "Side input window emitted by SDK harness was a WindowedValue<KV<...>> with a null V.");
       checkState(
           outputValue.isEmpty(),
           "Expected only a single side input window to have been emitted by "
               + "the SDK harness but also received %s",
           outputValue);
       return sideInputWindow.getValue().getValue();
-    } catch (Exception e) {
+    } catch (Throwable e) {
       LOG.error("Unable to map main input window {} to side input window.", mainWindow, e);
       throw new IllegalStateException(e);
     }

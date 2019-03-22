@@ -17,7 +17,7 @@
  */
 package org.apache.beam.runners.dataflow.worker;
 
-import static com.google.common.base.Preconditions.checkArgument;
+import static org.apache.beam.vendor.guava.v20_0.com.google.common.base.Preconditions.checkArgument;
 
 import com.google.api.client.util.Throwables;
 import com.google.api.services.dataflow.model.InstructionOutput;
@@ -29,12 +29,6 @@ import com.google.api.services.dataflow.model.PartialGroupByKeyInstruction;
 import com.google.api.services.dataflow.model.ReadInstruction;
 import com.google.api.services.dataflow.model.Source;
 import com.google.api.services.dataflow.model.WriteInstruction;
-import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.ImmutableTable;
-import com.google.common.collect.Iterables;
-import com.google.common.collect.Lists;
-import com.google.common.graph.MutableNetwork;
-import com.google.common.graph.Network;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -44,6 +38,7 @@ import java.util.Map;
 import java.util.function.Function;
 import org.apache.beam.model.fnexecution.v1.BeamFnApi.Target;
 import org.apache.beam.model.pipeline.v1.Endpoints;
+import org.apache.beam.model.pipeline.v1.RunnerApi;
 import org.apache.beam.runners.core.ElementByteSizeObservable;
 import org.apache.beam.runners.core.SideInputReader;
 import org.apache.beam.runners.dataflow.DataflowRunner;
@@ -57,6 +52,7 @@ import org.apache.beam.runners.dataflow.worker.counters.NameContext;
 import org.apache.beam.runners.dataflow.worker.fn.control.BeamFnMapTaskExecutor;
 import org.apache.beam.runners.dataflow.worker.fn.control.ProcessRemoteBundleOperation;
 import org.apache.beam.runners.dataflow.worker.fn.control.RegisterAndProcessBundleOperation;
+import org.apache.beam.runners.dataflow.worker.fn.control.TimerReceiver;
 import org.apache.beam.runners.dataflow.worker.fn.data.RemoteGrpcPortReadOperation;
 import org.apache.beam.runners.dataflow.worker.fn.data.RemoteGrpcPortWriteOperation;
 import org.apache.beam.runners.dataflow.worker.graph.Edges.Edge;
@@ -106,6 +102,12 @@ import org.apache.beam.sdk.util.common.ElementByteSizeObserver;
 import org.apache.beam.sdk.values.PCollectionView;
 import org.apache.beam.sdk.values.TupleTag;
 import org.apache.beam.sdk.values.WindowingStrategy;
+import org.apache.beam.vendor.guava.v20_0.com.google.common.collect.ImmutableMap;
+import org.apache.beam.vendor.guava.v20_0.com.google.common.collect.ImmutableTable;
+import org.apache.beam.vendor.guava.v20_0.com.google.common.collect.Iterables;
+import org.apache.beam.vendor.guava.v20_0.com.google.common.collect.Lists;
+import org.apache.beam.vendor.guava.v20_0.com.google.common.graph.MutableNetwork;
+import org.apache.beam.vendor.guava.v20_0.com.google.common.graph.Network;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -339,19 +341,59 @@ public class BeamFnMapTaskExecutorFactory implements DataflowMapTaskExecutorFact
             Iterables.filter(network.successors(input), OutputReceiverNode.class);
 
         Map<String, OutputReceiver> outputReceiverMap = new HashMap<>();
-        Lists.newArrayList(outputReceiverNodes)
-            .stream()
+        Lists.newArrayList(outputReceiverNodes).stream()
             .forEach(
                 outputReceiverNode ->
                     outputReceiverMap.put(
                         outputReceiverNode.getPcollectionId(),
                         outputReceiverNode.getOutputReceiver()));
+
+        DataflowOperationContext operationContextStage =
+            executionContext.createOperationContext(
+                NameContext.create(stageName, stageName, stageName, stageName));
+        TimerReceiver timerReceiver =
+            new TimerReceiver(
+                input.getExecutableStage().getComponents(),
+                executionContext.getStepContext(operationContextStage).namespacedToUser(),
+                stageBundleFactory);
+
+        ImmutableMap.Builder<String, DataflowOperationContext>
+            ptransformIdToOperationContextBuilder = ImmutableMap.builder();
+
+        for (Map.Entry<String, NameContext> entry :
+            input.getPTransformIdToPartialNameContextMap().entrySet()) {
+          NameContext fullNameContext =
+              NameContext.create(
+                  stageName,
+                  entry.getValue().originalName(),
+                  entry.getValue().systemName(),
+                  entry.getValue().userName());
+
+          DataflowOperationContext operationContext =
+              executionContext.createOperationContext(fullNameContext);
+          ptransformIdToOperationContextBuilder.put(entry.getKey(), operationContext);
+        }
+
+        ImmutableMap<String, DataflowOperationContext> ptransformIdToOperationContexts =
+            ptransformIdToOperationContextBuilder.build();
+
+        ImmutableMap<String, SideInputReader> ptransformIdToSideInputReaders =
+            buildPTransformIdToSideInputReadersMap(
+                executionContext, input, ptransformIdToOperationContexts);
+
+        Map<RunnerApi.ExecutableStagePayload.SideInputId, PCollectionView<?>>
+            ptransformIdToSideInputIdToPCollectionView = buildSideInputIdToPCollectionView(input);
+
         return OperationNode.create(
             new ProcessRemoteBundleOperation(
+                input.getExecutableStage(),
                 executionContext.createOperationContext(
                     NameContext.create(stageName, stageName, stageName, stageName)),
                 stageBundleFactory,
-                outputReceiverMap));
+                outputReceiverMap,
+                timerReceiver,
+                ptransformIdToSideInputReaders,
+                ptransformIdToSideInputIdToPCollectionView));
       }
     };
   }
@@ -440,6 +482,33 @@ public class BeamFnMapTaskExecutorFactory implements DataflowMapTaskExecutorFact
     return ptransformIdToSideInputReaders.build();
   }
 
+  /** Returns a map from PTransform id to side input reader. */
+  private static ImmutableMap<String, SideInputReader> buildPTransformIdToSideInputReadersMap(
+      DataflowExecutionContext executionContext,
+      ExecutableStageNode registerRequestNode,
+      ImmutableMap<String, DataflowOperationContext> ptransformIdToOperationContexts) {
+
+    ImmutableMap.Builder<String, SideInputReader> ptransformIdToSideInputReaders =
+        ImmutableMap.builder();
+    for (Map.Entry<String, Iterable<PCollectionView<?>>> ptransformIdToPCollectionView :
+        registerRequestNode.getPTransformIdToPCollectionViewMap().entrySet()) {
+      try {
+        ptransformIdToSideInputReaders.put(
+            ptransformIdToPCollectionView.getKey(),
+            executionContext.getSideInputReader(
+                // Note that the side input infos will only be populated for a batch pipeline
+                registerRequestNode
+                    .getPTransformIdToSideInputInfoMap()
+                    .get(ptransformIdToPCollectionView.getKey()),
+                ptransformIdToPCollectionView.getValue(),
+                ptransformIdToOperationContexts.get(ptransformIdToPCollectionView.getKey())));
+      } catch (Exception e) {
+        throw Throwables.propagate(e);
+      }
+    }
+    return ptransformIdToSideInputReaders.build();
+  }
+
   /**
    * Returns a table where the row key is the PTransform id, the column key is the side input id,
    * and the value is the corresponding PCollectionView.
@@ -459,6 +528,27 @@ public class BeamFnMapTaskExecutorFactory implements DataflowMapTaskExecutorFact
     }
 
     return ptransformIdToSideInputIdToPCollectionViewBuilder.build();
+  }
+
+  /** Returns a map where key is the SideInput id, value is PCollectionView. */
+  private static Map<RunnerApi.ExecutableStagePayload.SideInputId, PCollectionView<?>>
+      buildSideInputIdToPCollectionView(ExecutableStageNode executableStageNode) {
+    ImmutableMap.Builder<RunnerApi.ExecutableStagePayload.SideInputId, PCollectionView<?>>
+        sideInputIdToPCollectionViewMapBuilder = ImmutableMap.builder();
+
+    for (Map.Entry<String, Iterable<PCollectionView<?>>> ptransformIdToPCollectionViews :
+        executableStageNode.getPTransformIdToPCollectionViewMap().entrySet()) {
+      for (PCollectionView<?> pCollectionView : ptransformIdToPCollectionViews.getValue()) {
+        sideInputIdToPCollectionViewMapBuilder.put(
+            RunnerApi.ExecutableStagePayload.SideInputId.newBuilder()
+                .setTransformId(ptransformIdToPCollectionViews.getKey())
+                .setLocalName(pCollectionView.getTagInternal().getId())
+                .build(),
+            pCollectionView);
+      }
+    }
+
+    return sideInputIdToPCollectionViewMapBuilder.build();
   }
 
   /**

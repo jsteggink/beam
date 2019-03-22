@@ -28,7 +28,7 @@ import org.apache.flink.api.common.ExecutionMode;
 import org.apache.flink.runtime.state.StateBackend;
 import org.apache.flink.streaming.api.CheckpointingMode;
 
-/** Options which can be used to configure a Flink PipelineRunner. */
+/** Options which can be used to configure a Flink PortablePipelineRunner. */
 public interface FlinkPipelineOptions
     extends PipelineOptions, ApplicationNameOptions, StreamingOptions {
 
@@ -107,6 +107,15 @@ public interface FlinkPipelineOptions
   Long getMinPauseBetweenCheckpoints();
 
   void setMinPauseBetweenCheckpoints(Long minPauseInterval);
+
+  @Description(
+      "Sets the expected behaviour for tasks in case that they encounter an error in their "
+          + "checkpointing procedure. If this is set to true, the task will fail on checkpointing error. "
+          + "If this is set to false, the task will only decline a the checkpoint and continue running. ")
+  @Default.Boolean(true)
+  Boolean getFailOnCheckpointingErrors();
+
+  void setFailOnCheckpointingErrors(Boolean failOnCheckpointingErrors);
 
   @Description(
       "Sets the number of times that failed tasks are re-executed. "

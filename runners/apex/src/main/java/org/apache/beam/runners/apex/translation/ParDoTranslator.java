@@ -17,11 +17,10 @@
  */
 package org.apache.beam.runners.apex.translation;
 
-import static com.google.common.base.Preconditions.checkArgument;
+import static org.apache.beam.vendor.guava.v20_0.com.google.common.base.Preconditions.checkArgument;
 
 import com.datatorrent.api.Operator;
 import com.datatorrent.api.Operator.OutputPort;
-import com.google.common.collect.Maps;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -31,15 +30,19 @@ import java.util.stream.Collectors;
 import org.apache.beam.runners.apex.ApexRunner;
 import org.apache.beam.runners.apex.translation.operators.ApexParDoOperator;
 import org.apache.beam.runners.core.SplittableParDoViaKeyedWorkItems.ProcessElements;
+import org.apache.beam.runners.core.construction.ParDoTranslation;
 import org.apache.beam.sdk.coders.Coder;
 import org.apache.beam.sdk.transforms.DoFn;
+import org.apache.beam.sdk.transforms.DoFnSchemaInformation;
 import org.apache.beam.sdk.transforms.ParDo;
 import org.apache.beam.sdk.transforms.reflect.DoFnSignature;
 import org.apache.beam.sdk.transforms.reflect.DoFnSignatures;
+import org.apache.beam.sdk.transforms.splittabledofn.RestrictionTracker;
 import org.apache.beam.sdk.values.PCollection;
 import org.apache.beam.sdk.values.PCollectionView;
 import org.apache.beam.sdk.values.PValue;
 import org.apache.beam.sdk.values.TupleTag;
+import org.apache.beam.vendor.guava.v20_0.com.google.common.collect.Maps;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -76,10 +79,11 @@ class ParDoTranslator<InputT, OutputT>
     PCollection<InputT> input = context.getInput();
     List<PCollectionView<?>> sideInputs = transform.getSideInputs();
 
+    DoFnSchemaInformation doFnSchemaInformation;
+    doFnSchemaInformation = ParDoTranslation.getSchemaInformation(context.getCurrentTransform());
+
     Map<TupleTag<?>, Coder<?>> outputCoders =
-        outputs
-            .entrySet()
-            .stream()
+        outputs.entrySet().stream()
             .filter(e -> e.getValue() instanceof PCollection)
             .collect(
                 Collectors.toMap(e -> e.getKey(), e -> ((PCollection) e.getValue()).getCoder()));
@@ -93,6 +97,7 @@ class ParDoTranslator<InputT, OutputT>
             sideInputs,
             input.getCoder(),
             outputCoders,
+            doFnSchemaInformation,
             context.getStateBackend());
 
     Map<PCollection<?>, OutputPort<?>> ports = Maps.newHashMapWithExpectedSize(outputs.size());
@@ -125,12 +130,13 @@ class ParDoTranslator<InputT, OutputT>
     }
   }
 
-  static class SplittableProcessElementsTranslator<InputT, OutputT, RestrictionT, PositionT>
-      implements TransformTranslator<ProcessElements<InputT, OutputT, RestrictionT, PositionT>> {
+  static class SplittableProcessElementsTranslator<
+          InputT, OutputT, RestrictionT, TrackerT extends RestrictionTracker<RestrictionT, ?>>
+      implements TransformTranslator<ProcessElements<InputT, OutputT, RestrictionT, TrackerT>> {
 
     @Override
     public void translate(
-        ProcessElements<InputT, OutputT, RestrictionT, PositionT> transform,
+        ProcessElements<InputT, OutputT, RestrictionT, TrackerT> transform,
         TranslationContext context) {
 
       Map<TupleTag<?>, PValue> outputs = context.getOutputs();
@@ -138,9 +144,7 @@ class ParDoTranslator<InputT, OutputT>
       List<PCollectionView<?>> sideInputs = transform.getSideInputs();
 
       Map<TupleTag<?>, Coder<?>> outputCoders =
-          outputs
-              .entrySet()
-              .stream()
+          outputs.entrySet().stream()
               .filter(e -> e.getValue() instanceof PCollection)
               .collect(
                   Collectors.toMap(e -> e.getKey(), e -> ((PCollection) e.getValue()).getCoder()));
@@ -157,6 +161,7 @@ class ParDoTranslator<InputT, OutputT>
               sideInputs,
               input.getCoder(),
               outputCoders,
+              DoFnSchemaInformation.create(),
               context.getStateBackend());
 
       Map<PCollection<?>, OutputPort<?>> ports = Maps.newHashMapWithExpectedSize(outputs.size());
@@ -221,8 +226,8 @@ class ParDoTranslator<InputT, OutputT>
           .getWindowingStrategy()
           .equals(firstSideInput.getWindowingStrategy())) {
         // TODO: check how to handle this in stream codec
-        //String msg = "Multiple side inputs with different window strategies.";
-        //throw new UnsupportedOperationException(msg);
+        // String msg = "Multiple side inputs with different window strategies.";
+        // throw new UnsupportedOperationException(msg);
         LOG.warn(
             "Side inputs union with different windowing strategies {} {}",
             firstSideInput.getWindowingStrategy(),

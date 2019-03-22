@@ -17,13 +17,8 @@
  */
 package org.apache.beam.runners.dataflow.worker.fn.control;
 
-import static com.google.common.base.Preconditions.checkState;
+import static org.apache.beam.vendor.guava.v20_0.com.google.common.base.Preconditions.checkState;
 
-import com.google.common.base.MoreObjects;
-import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Iterables;
-import com.google.common.collect.Maps;
-import com.google.common.collect.Table;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.List;
@@ -37,7 +32,6 @@ import javax.annotation.Nullable;
 import org.apache.beam.model.fnexecution.v1.BeamFnApi;
 import org.apache.beam.model.fnexecution.v1.BeamFnApi.InstructionRequest;
 import org.apache.beam.model.fnexecution.v1.BeamFnApi.InstructionResponse;
-import org.apache.beam.model.fnexecution.v1.BeamFnApi.MonitoringInfo;
 import org.apache.beam.model.fnexecution.v1.BeamFnApi.ProcessBundleDescriptor;
 import org.apache.beam.model.fnexecution.v1.BeamFnApi.ProcessBundleProgressRequest;
 import org.apache.beam.model.fnexecution.v1.BeamFnApi.ProcessBundleRequest;
@@ -49,6 +43,7 @@ import org.apache.beam.model.fnexecution.v1.BeamFnApi.StateKey;
 import org.apache.beam.model.fnexecution.v1.BeamFnApi.StateRequest;
 import org.apache.beam.model.fnexecution.v1.BeamFnApi.StateRequest.RequestCase;
 import org.apache.beam.model.fnexecution.v1.BeamFnApi.StateResponse;
+import org.apache.beam.model.pipeline.v1.MetricsApi.MonitoringInfo;
 import org.apache.beam.model.pipeline.v1.RunnerApi;
 import org.apache.beam.runners.core.SideInputReader;
 import org.apache.beam.runners.core.StateNamespaces;
@@ -71,8 +66,13 @@ import org.apache.beam.sdk.transforms.windowing.BoundedWindow;
 import org.apache.beam.sdk.transforms.windowing.GlobalWindow;
 import org.apache.beam.sdk.util.MoreFutures;
 import org.apache.beam.sdk.values.PCollectionView;
-import org.apache.beam.vendor.grpc.v1_13_1.com.google.protobuf.ByteString;
-import org.apache.beam.vendor.grpc.v1_13_1.com.google.protobuf.TextFormat;
+import org.apache.beam.vendor.grpc.v1p13p1.com.google.protobuf.ByteString;
+import org.apache.beam.vendor.grpc.v1p13p1.com.google.protobuf.TextFormat;
+import org.apache.beam.vendor.guava.v20_0.com.google.common.base.MoreObjects;
+import org.apache.beam.vendor.guava.v20_0.com.google.common.collect.ImmutableMap;
+import org.apache.beam.vendor.guava.v20_0.com.google.common.collect.Iterables;
+import org.apache.beam.vendor.guava.v20_0.com.google.common.collect.Maps;
+import org.apache.beam.vendor.guava.v20_0.com.google.common.collect.Table;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -172,7 +172,7 @@ public class RegisterAndProcessBundleOperation extends Operation {
         processBundleDescriptor.getPcollectionsMap().entrySet()) {
       builder.append(
           String.format(
-              "  %s [fontname=\"Courier New\" label=\"%s\"];\n",
+              "  %s [fontname=\"Courier New\" label=\"%s\"];%n",
               nodeName.get("pc " + nodeEntry.getKey()),
               escapeDot(nodeEntry.getKey() + ": " + nodeEntry.getValue().getUniqueName())));
     }
@@ -180,7 +180,7 @@ public class RegisterAndProcessBundleOperation extends Operation {
         processBundleDescriptor.getTransformsMap().entrySet()) {
       builder.append(
           String.format(
-              "  %s [fontname=\"Courier New\" label=\"%s\"];\n",
+              "  %s [fontname=\"Courier New\" label=\"%s\"];%n",
               nodeName.get("pt " + nodeEntry.getKey()),
               escapeDot(
                   nodeEntry.getKey()
@@ -191,7 +191,7 @@ public class RegisterAndProcessBundleOperation extends Operation {
       for (Entry<String, String> inputEntry : nodeEntry.getValue().getInputsMap().entrySet()) {
         builder.append(
             String.format(
-                "  %s -> %s [fontname=\"Courier New\" label=\"%s\"];\n",
+                "  %s -> %s [fontname=\"Courier New\" label=\"%s\"];%n",
                 nodeName.get("pc " + inputEntry.getValue()),
                 nodeName.get("pt " + nodeEntry.getKey()),
                 escapeDot(inputEntry.getKey())));
@@ -199,7 +199,7 @@ public class RegisterAndProcessBundleOperation extends Operation {
       for (Entry<String, String> outputEntry : nodeEntry.getValue().getOutputsMap().entrySet()) {
         builder.append(
             String.format(
-                "  %s -> %s [fontname=\"Courier New\" label=\"%s\"];\n",
+                "  %s -> %s [fontname=\"Courier New\" label=\"%s\"];%n",
                 nodeName.get("pt " + nodeEntry.getKey()),
                 nodeName.get("pc " + outputEntry.getValue()),
                 escapeDot(outputEntry.getKey())));
@@ -277,7 +277,13 @@ public class RegisterAndProcessBundleOperation extends Operation {
 
     try (Closeable scope = context.enterFinish()) {
       // Await completion or failure
-      MoreFutures.get(getProcessBundleResponse(processBundleResponse));
+      BeamFnApi.ProcessBundleResponse completedResponse =
+          MoreFutures.get(getProcessBundleResponse(processBundleResponse));
+      if (completedResponse.getResidualRootsCount() > 0) {
+        throw new IllegalStateException(
+            "TODO: [BEAM-2939] residual roots in process bundle response not yet supported.");
+      }
+
       deregisterStateHandler.deregister();
       userStateData.clear();
       processBundleId = null;

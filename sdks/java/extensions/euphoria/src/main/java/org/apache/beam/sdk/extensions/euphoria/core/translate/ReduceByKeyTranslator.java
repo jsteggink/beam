@@ -17,8 +17,8 @@
  */
 package org.apache.beam.sdk.extensions.euphoria.core.translate;
 
-import static com.google.common.base.Preconditions.checkState;
 import static java.util.Objects.requireNonNull;
+import static org.apache.beam.vendor.guava.v20_0.com.google.common.base.Preconditions.checkState;
 
 import java.util.stream.StreamSupport;
 import javax.annotation.Nullable;
@@ -86,8 +86,8 @@ public class ReduceByKeyTranslator<InputT, KeyT, ValueT, OutputT>
               "combine",
               Combine.perKey(asCombiner(reducer, accumulators, operator.getName().orElse(null))));
       @SuppressWarnings("unchecked")
-      final PCollection<KV<KeyT, OutputT>> casted = (PCollection) combined;
-      return casted.setTypeDescriptor(
+      final PCollection<KV<KeyT, OutputT>> cast = (PCollection) combined;
+      return cast.setTypeDescriptor(
           operator
               .getOutputType()
               .orElseThrow(

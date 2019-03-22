@@ -56,6 +56,7 @@ import tempfile
 import pkg_resources
 
 from apache_beam.internal import pickler
+from apache_beam.internal.http_client import get_new_http
 from apache_beam.io.filesystems import FileSystems
 from apache_beam.options.pipeline_options import SetupOptions
 from apache_beam.options.pipeline_options import WorkerOptions
@@ -286,7 +287,7 @@ class Stager(object):
         # even for a 404 response (file will contain the contents of the 404
         # response).
         # TODO(angoenka): Extract and use the filename when downloading file.
-        response, content = __import__('httplib2').Http().request(from_url)
+        response, content = get_new_http().request(from_url)
         if int(response['status']) >= 400:
           raise RuntimeError(
               'Artifact not found at %s (response: %s)' % (from_url, response))
@@ -488,7 +489,13 @@ class Stager(object):
       try:
         # Stage binary distribution of the SDK, for now on a best-effort basis.
         sdk_local_file = Stager._download_pypi_sdk_package(
-            temp_dir, fetch_binary=True)
+            temp_dir, fetch_binary=True,
+            language_version_tag='%d%d' % (sys.version_info[0],
+                                           sys.version_info[1]),
+            abi_tag='cp%d%d%s' % (
+                sys.version_info[0],
+                sys.version_info[1],
+                'mu' if sys.version_info[0] < 3 else 'm'))
         sdk_binary_staged_name = Stager.\
             _desired_sdk_filename_in_staging_location(sdk_local_file)
         staged_path = FileSystems.join(staging_location, sdk_binary_staged_name)

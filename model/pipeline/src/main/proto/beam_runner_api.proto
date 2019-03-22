@@ -29,6 +29,7 @@ option go_package = "pipeline_v1";
 option java_package = "org.apache.beam.model.pipeline.v1";
 option java_outer_classname = "RunnerApi";
 
+import "endpoints.proto";
 import "google/protobuf/any.proto";
 import "google/protobuf/descriptor.proto";
 
@@ -250,6 +251,7 @@ message StandardPTransforms {
   }
   // Payload for all of these: CombinePayload
   enum CombineComponents {
+    // TODO(BEAM-6199): Remove these old URNs.
     COMBINE_PGBKCV = 0 [(beam_urn) = "beam:transform:combine_pgbkcv:v1"];
     COMBINE_MERGE_ACCUMULATORS = 1 [(beam_urn) = "beam:transform:combine_merge_accumulators:v1"];
     COMBINE_EXTRACT_OUTPUTS = 2 [(beam_urn) = "beam:transform:combine_extract_outputs:v1"];
@@ -541,6 +543,9 @@ message StandardCoders {
   enum Enum {
     // Components: None
     BYTES = 0 [(beam_urn) = "beam:coder:bytes:v1"];
+
+    // Components: None
+    STRING_UTF8 = 10 [(beam_urn) = "beam:coder:string_utf8:v1"];
 
     // Components: The key and value coder, in that order.
     KV = 1 [(beam_urn) = "beam:coder:kv:v1"];
@@ -979,6 +984,11 @@ message ProcessPayload {
   string arch = 2;  // "amd64", ..
   string command = 3; // process to execute
   map<string, string> env = 4; // Environment variables
+}
+
+message ExternalPayload {
+  ApiServiceDescriptor endpoint = 1;
+  map<string, string> params = 2;  // Arbitrary extra parameters to pass
 }
 
 // A specification of a user defined function.

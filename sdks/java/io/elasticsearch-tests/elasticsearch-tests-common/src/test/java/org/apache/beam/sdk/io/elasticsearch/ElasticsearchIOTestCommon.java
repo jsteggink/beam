@@ -99,6 +99,9 @@ class ElasticsearchIOTestCommon implements Serializable {
   private static final long BATCH_SIZE = 200L;
   private static final long BATCH_SIZE_BYTES = 2048L;
 
+  public static final String UPDATE_INDEX = "partial_update";
+  public static final String UPDATE_TYPE = "test";
+
   private final long numDocs;
   private final ConnectionConfiguration connectionConfiguration;
   private final RestClient restClient;
@@ -185,9 +188,9 @@ class ElasticsearchIOTestCommon implements Serializable {
         pipeline.apply(
             ElasticsearchIO.read()
                 .withConnectionConfiguration(connectionConfiguration)
-                //set to default value, useful just to test parameter passing.
+                // set to default value, useful just to test parameter passing.
                 .withScrollKeepalive("5m")
-                //set to default value, useful just to test parameter passing.
+                // set to default value, useful just to test parameter passing.
                 .withBatchSize(100L));
     PAssert.thatSingleton(output.apply("Count", Count.globally())).isEqualTo(numDocs);
     pipeline.run();
@@ -547,6 +550,41 @@ class ElasticsearchIOTestCommon implements Serializable {
     assertEquals(numDocs / 2, countByMatch(connectionConfiguration, restClient, "group", "1"));
   }
 
+  /** Tests partial updates with errors by adding some invalid info to test set. */
+  void testWritePartialUpdateWithErrors() throws Exception {
+    // put a mapping to simulate error of insertion
+    ElasticSearchIOTestUtils.setIndexMapping(connectionConfiguration, restClient);
+
+    if (!useAsITests) {
+      ElasticSearchIOTestUtils.insertTestDocuments(connectionConfiguration, numDocs, restClient);
+    }
+
+    // try to partial update a document with an incompatible date format for the age to generate
+    // an update error
+    List<String> data = new ArrayList<>();
+    data.add("{\"id\" : 1, \"age\" : \"2018-08-10:00:00\"}");
+
+    try {
+      pipeline
+          .apply(Create.of(data))
+          .apply(
+              ElasticsearchIO.write()
+                  .withConnectionConfiguration(connectionConfiguration)
+                  .withIdFn(new ExtractValueFn("id"))
+                  .withUsePartialUpdate(true));
+      pipeline.run();
+    } catch (Exception e) {
+      boolean matches =
+          e.getLocalizedMessage()
+              .matches(
+                  "(?is).*Error writing to Elasticsearch, some elements could not be inserted:"
+                      + ".*Document id .+: failed to parse .*Caused by: .*"
+                      + ".*For input string: \"2018-08-10:00:00\".*");
+
+      assertTrue(matches);
+    }
+  }
+
   /**
    * Function for checking if any string in iterable contains expected substring. Fails if no match
    * is found.
@@ -594,7 +632,8 @@ class ElasticsearchIOTestCommon implements Serializable {
    */
   void testWriteRetry() throws Throwable {
     expectedException.expectCause(isA(IOException.class));
-    // max attempt is 3, but retry is 2 which excludes 1st attempt when error was identified and retry started.
+    // max attempt is 3, but retry is 2 which excludes 1st attempt when error was identified and
+    // retry started.
     expectedException.expectMessage(
         String.format(ElasticsearchIO.Write.WriteFn.RETRY_FAILED_LOG, EXPECTED_RETRIES));
 

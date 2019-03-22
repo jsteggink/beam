@@ -17,10 +17,6 @@
  */
 package org.apache.beam.runners.spark.translation;
 
-import com.google.common.base.Function;
-import com.google.common.collect.Iterators;
-import com.google.common.collect.LinkedListMultimap;
-import com.google.common.collect.Multimap;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
@@ -40,6 +36,7 @@ import org.apache.beam.runners.spark.util.SideInputBroadcast;
 import org.apache.beam.runners.spark.util.SparkSideInputReader;
 import org.apache.beam.sdk.coders.Coder;
 import org.apache.beam.sdk.transforms.DoFn;
+import org.apache.beam.sdk.transforms.DoFnSchemaInformation;
 import org.apache.beam.sdk.transforms.reflect.DoFnInvokers;
 import org.apache.beam.sdk.transforms.windowing.BoundedWindow;
 import org.apache.beam.sdk.util.SerializableUtils;
@@ -47,6 +44,10 @@ import org.apache.beam.sdk.util.WindowedValue;
 import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.TupleTag;
 import org.apache.beam.sdk.values.WindowingStrategy;
+import org.apache.beam.vendor.guava.v20_0.com.google.common.base.Function;
+import org.apache.beam.vendor.guava.v20_0.com.google.common.collect.Iterators;
+import org.apache.beam.vendor.guava.v20_0.com.google.common.collect.LinkedListMultimap;
+import org.apache.beam.vendor.guava.v20_0.com.google.common.collect.Multimap;
 import org.apache.spark.Accumulator;
 import org.apache.spark.api.java.function.PairFlatMapFunction;
 import scala.Tuple2;
@@ -73,6 +74,7 @@ public class MultiDoFnFunction<InputT, OutputT>
   private final Map<TupleTag<?>, KV<WindowingStrategy<?, ?>, SideInputBroadcast<?>>> sideInputs;
   private final WindowingStrategy<?, ?> windowingStrategy;
   private final boolean stateful;
+  private final DoFnSchemaInformation doFnSchemaInformation;
 
   /**
    * @param metricsAccum The Spark {@link Accumulator} that backs the Beam metrics.
@@ -97,7 +99,8 @@ public class MultiDoFnFunction<InputT, OutputT>
       Map<TupleTag<?>, Coder<?>> outputCoders,
       Map<TupleTag<?>, KV<WindowingStrategy<?, ?>, SideInputBroadcast<?>>> sideInputs,
       WindowingStrategy<?, ?> windowingStrategy,
-      boolean stateful) {
+      boolean stateful,
+      DoFnSchemaInformation doFnSchemaInformation) {
     this.metricsAccum = metricsAccum;
     this.stepName = stepName;
     this.doFn = SerializableUtils.clone(doFn);
@@ -109,6 +112,7 @@ public class MultiDoFnFunction<InputT, OutputT>
     this.sideInputs = sideInputs;
     this.windowingStrategy = windowingStrategy;
     this.stateful = stateful;
+    this.doFnSchemaInformation = doFnSchemaInformation;
   }
 
   @Override
@@ -161,7 +165,8 @@ public class MultiDoFnFunction<InputT, OutputT>
             context,
             inputCoder,
             outputCoders,
-            windowingStrategy);
+            windowingStrategy,
+            doFnSchemaInformation);
 
     DoFnRunnerWithMetrics<InputT, OutputT> doFnRunnerWithMetrics =
         new DoFnRunnerWithMetrics<>(stepName, doFnRunner, metricsAccum);

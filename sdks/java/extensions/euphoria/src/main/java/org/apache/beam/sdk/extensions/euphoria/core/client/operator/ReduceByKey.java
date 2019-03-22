@@ -87,13 +87,12 @@ import org.joda.time.Duration;
  */
 @Audience(Audience.Type.CLIENT)
 @Recommended(
-  reason =
-      "Is very recommended to override because of performance in "
-          + "a specific area of (mostly) batch calculations where combiners "
-          + "can be efficiently used in the executor-specific implementation",
-  state = StateComplexity.CONSTANT_IF_COMBINABLE,
-  repartitions = 1
-)
+    reason =
+        "Is very recommended to override because of performance in "
+            + "a specific area of (mostly) batch calculations where combiners "
+            + "can be efficiently used in the executor-specific implementation",
+    state = StateComplexity.CONSTANT_IF_COMBINABLE,
+    repartitions = 1)
 public class ReduceByKey<InputT, KeyT, ValueT, OutputT>
     extends ShuffleOperator<InputT, KeyT, KV<KeyT, OutputT>> implements TypeAware.Value<ValueT> {
 
@@ -336,29 +335,29 @@ public class ReduceByKey<InputT, KeyT, ValueT, OutputT>
     @SuppressWarnings("unchecked")
     public <T> KeyByBuilder<T> of(PCollection<T> input) {
       @SuppressWarnings("unchecked")
-      final Builder<T, ?, ?, ?> casted = (Builder) this;
-      casted.input = input;
-      return casted;
+      final Builder<T, ?, ?, ?> cast = (Builder) this;
+      cast.input = input;
+      return cast;
     }
 
     @Override
     public <T> ValueByReduceByBuilder<InputT, T, InputT> keyBy(
         UnaryFunction<InputT, T> keyExtractor, @Nullable TypeDescriptor<T> keyType) {
       @SuppressWarnings("unchecked")
-      final Builder<InputT, T, InputT, ?> casted = (Builder) this;
-      casted.keyExtractor = requireNonNull(keyExtractor);
-      casted.keyType = keyType;
-      return casted;
+      final Builder<InputT, T, InputT, ?> cast = (Builder) this;
+      cast.keyExtractor = requireNonNull(keyExtractor);
+      cast.keyType = keyType;
+      return cast;
     }
 
     @Override
     public <T> ReduceByBuilder<KeyT, T> valueBy(
         UnaryFunction<InputT, T> valueExtractor, @Nullable TypeDescriptor<T> valueType) {
       @SuppressWarnings("unchecked")
-      final Builder<InputT, KeyT, T, ?> casted = (Builder) this;
-      casted.valueExtractor = requireNonNull(valueExtractor);
-      casted.valueType = valueType;
-      return casted;
+      final Builder<InputT, KeyT, T, ?> cast = (Builder) this;
+      cast.valueExtractor = requireNonNull(valueExtractor);
+      cast.valueType = valueType;
+      return cast;
     }
 
     @Override
@@ -370,10 +369,10 @@ public class ReduceByKey<InputT, KeyT, ValueT, OutputT>
         valueExtractor = (UnaryFunction) UnaryFunction.identity();
       }
       @SuppressWarnings("unchecked")
-      final Builder<InputT, KeyT, ValueT, T> casted = (Builder) this;
-      casted.reducer = requireNonNull(reducer);
-      casted.outputType = outputType;
-      return casted;
+      final Builder<InputT, KeyT, ValueT, T> cast = (Builder) this;
+      cast.reducer = requireNonNull(reducer);
+      cast.outputType = outputType;
+      return cast;
     }
 
     @Override
