@@ -20,7 +20,6 @@ package org.apache.beam.sdk.io.elasticsearch;
 import static org.apache.beam.sdk.io.elasticsearch.ElasticsearchHlrcIO.ConnectionConfiguration;
 import static org.junit.Assert.assertEquals;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -32,18 +31,17 @@ import org.elasticsearch.action.DocWriteRequest;
 import org.elasticsearch.action.admin.indices.create.CreateIndexRequest;
 import org.elasticsearch.action.admin.indices.create.CreateIndexResponse;
 import org.elasticsearch.action.admin.indices.delete.DeleteIndexRequest;
-import org.elasticsearch.action.admin.indices.delete.DeleteIndexResponse;
 import org.elasticsearch.action.admin.indices.refresh.RefreshRequest;
-import org.elasticsearch.action.admin.indices.refresh.RefreshResponse;
 import org.elasticsearch.action.bulk.BulkRequest;
 import org.elasticsearch.action.bulk.BulkResponse;
+import org.elasticsearch.action.delete.DeleteRequest;
 import org.elasticsearch.action.index.IndexRequest;
 import org.elasticsearch.action.search.SearchRequest;
 import org.elasticsearch.action.search.SearchResponse;
+import org.elasticsearch.action.support.master.AcknowledgedResponse;
+import org.elasticsearch.action.update.UpdateRequest;
 import org.elasticsearch.client.Request;
 import org.elasticsearch.client.RequestOptions;
-import org.elasticsearch.client.Response;
-import org.elasticsearch.client.RestClient;
 import org.elasticsearch.client.RestHighLevelClient;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.xcontent.XContentBuilder;
@@ -72,12 +70,6 @@ class ElasticSearchHlrcIOTestUtils {
   };
   static final int NUM_SCIENTISTS = FAMOUS_SCIENTISTS.length;
 
-  /** Enumeration that specifies whether to insert malformed documents. */
-  public enum InjectionMode {
-    INJECT_SOME_INVALID_DOCS,
-    DO_NOT_INJECT_INVALID_DOCS
-  }
-
   /** Create the given index synchronously. */
   static CreateIndexResponse createIndex(
       ConnectionConfiguration connectionConfiguration, RestHighLevelClient restHighLevelClient)
@@ -105,7 +97,7 @@ class ElasticSearchHlrcIOTestUtils {
   static void deleteIndex(RestHighLevelClient restHighLevelClient, String index)
       throws IOException {
     try {
-      DeleteIndexResponse response =
+      AcknowledgedResponse response =
           restHighLevelClient.indices().delete(new DeleteIndexRequest(index),
               RequestOptions.DEFAULT);
     } catch (ElasticsearchException e) {
@@ -141,8 +133,8 @@ class ElasticSearchHlrcIOTestUtils {
       throws IOException {
 
     List<DocWriteRequest> data =
-        ElasticSearchHlrcIOTestUtils.createDocuments(
-            numDocs, InjectionMode.DO_NOT_INJECT_INVALID_DOCS, connectionConfiguration.getIndex());
+        ElasticSearchHlrcIOTestUtils.createIndexRequests(
+            numDocs, connectionConfiguration.getIndex());
 
     int i = 0;
     BulkRequest request = new BulkRequest();
@@ -156,6 +148,11 @@ class ElasticSearchHlrcIOTestUtils {
     if(bulkResponse.hasFailures()) {
       LOG.error("Bulk had failures.");
     }
+
+    long currentNumDocs =
+        refreshIndexAndGetCurrentNumDocs(
+            connectionConfiguration, restHighLevelClient);
+    assertEquals(numDocs, currentNumDocs);
   }
 
   /**
@@ -183,12 +180,11 @@ class ElasticSearchHlrcIOTestUtils {
   /**
    * Generates a list of test documents for insertion.
    *
-   * @param numDocs Number of docs to generate
-   * @param injectionMode {@link InjectionMode} that specifies whether to insert malformed documents
+   * @param numDocs Number of index requests to generate
    * @return the list of DocWriteRequests representing the documents
    */
-  static List<DocWriteRequest> createDocuments(
-      long numDocs, InjectionMode injectionMode, String indexName) throws IOException {
+  static List<DocWriteRequest> createIndexRequests(
+      long numDocs, String indexName) throws IOException {
 
     ArrayList<DocWriteRequest> data = new ArrayList<>();
     for (int i = 0; i < numDocs; i++) {
@@ -202,13 +198,51 @@ class ElasticSearchHlrcIOTestUtils {
        builder.endObject();
        doc.source(builder);
        data.add(doc);
-
-       if (injectionMode == InjectionMode.INJECT_SOME_INVALID_DOCS) {
-         doc = new IndexRequest(indexName, "_doc", Integer.toString(i));
-         doc.source(String.format("{non working doc %s]", i));
-         data.add(doc);
-       }
       }
+
+    return data;
+  }
+
+  /**
+   * Generates a list of update requests which reverse the scientist name.
+   *
+   * @param numDocs Number of update requests to generate
+   * @return the list of DocWriteRequests representing the documents
+   */
+  static List<DocWriteRequest> createUpdateRequests(
+      long numDocs, String indexName) throws IOException {
+
+    ArrayList<DocWriteRequest> data = new ArrayList<>();
+    for (int i = 0; i < numDocs; i++) {
+      int index = i % FAMOUS_SCIENTISTS.length;
+      UpdateRequest doc = new UpdateRequest(indexName, "_doc", Integer.toString(i));
+      XContentBuilder builder = XContentFactory.jsonBuilder();
+      builder.startObject();
+      {
+        builder.field("scientist", new StringBuilder(FAMOUS_SCIENTISTS[index]).reverse().toString());
+      }
+      builder.endObject();
+      doc.upsert(builder);
+      data.add(doc);
+    }
+
+    return data;
+  }
+
+  /**
+   * Generates a list of delete requests to delete al documents one by one.
+   *
+   * @param numDocs Number of requests to generate
+   * @return the list of DocWriteRequests
+   */
+  static List<DocWriteRequest> createDeleteRequests(
+      long numDocs, String indexName) throws IOException {
+
+    ArrayList<DocWriteRequest> data = new ArrayList<>();
+    for (int i = 0; i < numDocs; i++) {
+      DeleteRequest doc = new DeleteRequest(indexName, "_doc", Integer.toString(i));
+      data.add(doc);
+    }
 
     return data;
   }

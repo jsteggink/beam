@@ -18,16 +18,16 @@ import org.apache.beam.gradle.BeamModulePlugin
  * limitations under the License.
  */
 
-apply plugin: BeamModulePlugin
+apply plugin: org.apache.beam.gradle.BeamModulePlugin
 applyJavaNature()
 provideIntegrationTestingDependencies()
 enableJavaPerformanceTesting()
 
 description = "Apache Beam :: SDKs :: Java :: IO :: Elasticsearch (High Level Rest Client)"
-ext.summary = "IO to read and write on Elasticsearch 6+"
+ext.summary = "IO to read and write on Elasticsearch"
 
 def log4j_version = "2.6.2"
-def elastic_search_version = "6.5.2"
+def elastic_search_version = "6.6.2"
 
 configurations.all {
   resolutionStrategy {
@@ -57,7 +57,7 @@ dependencies {
   testCompile 'org.testcontainers:testcontainers:1.10.1'
   testCompile 'org.testcontainers:elasticsearch:1.10.1'
   testCompile project(path: ":beam-sdks-java-core", configuration: "shadow")
-  testCompile project(path: ":beam-sdks-java-io-elasticsearch-6", configuration: "shadow")
+  testCompile project(path: ":beam-sdks-java-io-elasticsearch-hlrc", configuration: "shadow")
   testCompile project(path: ":beam-sdks-java-io-common", configuration: "shadow")
   testCompile project(path: ":beam-runners-direct-java", configuration: "shadow")
   testCompile "org.apache.logging.log4j:log4j-core:$log4j_version"

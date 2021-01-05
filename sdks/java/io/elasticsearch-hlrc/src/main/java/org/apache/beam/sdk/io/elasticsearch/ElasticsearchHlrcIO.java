@@ -64,7 +64,6 @@ import org.apache.http.conn.ssl.TrustSelfSignedStrategy;
 import org.apache.http.impl.client.BasicCredentialsProvider;
 import org.apache.http.nio.conn.ssl.SSLIOSessionStrategy;
 import org.apache.http.ssl.SSLContexts;
-import org.elasticsearch.Version;
 import org.elasticsearch.action.DocWriteRequest;
 import org.elasticsearch.action.admin.indices.mapping.get.GetFieldMappingsRequest;
 import org.elasticsearch.action.admin.indices.mapping.get.GetFieldMappingsResponse;
@@ -72,7 +71,6 @@ import org.elasticsearch.action.bulk.BulkItemResponse;
 import org.elasticsearch.action.bulk.BulkProcessor;
 import org.elasticsearch.action.bulk.BulkRequest;
 import org.elasticsearch.action.bulk.BulkResponse;
-import org.elasticsearch.action.main.MainResponse;
 import org.elasticsearch.action.search.ClearScrollRequest;
 import org.elasticsearch.action.search.ClearScrollResponse;
 import org.elasticsearch.action.search.SearchRequest;
@@ -148,9 +146,6 @@ public class ElasticsearchHlrcIO {
 
   private static final Logger LOG = LoggerFactory.getLogger(ElasticsearchHlrcIO.class);
 
-  private static final int VALID_ES_MAJOR_VERSION = 6;
-  private static final int VALID_ES_MINOR_VERSION = 0;
-
   /**
    * Create a read object.
    * @param connectionConfiguration connection configuration
@@ -171,8 +166,8 @@ public class ElasticsearchHlrcIO {
 
   /**
    *
-   * @param connectionConfiguration
-   * @return
+   * @param connectionConfiguration connection configuration
+   * @return Write
    */
   public static Write write(ConnectionConfiguration connectionConfiguration) {
     return new AutoValue_ElasticsearchHlrcIO_Write.Builder()
@@ -188,8 +183,7 @@ public class ElasticsearchHlrcIO {
 
   private static final ObjectMapper mapper = new ObjectMapper();
 
-  @VisibleForTesting
-  static JsonNode parseResponse(Response response) throws IOException {
+  @VisibleForTesting private static JsonNode parseResponse(Response response) throws IOException {
     return mapper.readValue(response.getEntity().getContent(), JsonNode.class);
   }
 
@@ -426,163 +420,6 @@ public class ElasticsearchHlrcIO {
     }
   }
 
-  /** A POJO describing the BackOffPolicy configuration for the BulkProcessor. */
-  @AutoValue
-  public abstract static class BackOffPolicyConfiguration implements Serializable {
-
-    /**
-     * Delay in milliseconds.
-     * @return delay in milliseconds
-     */
-    @Nullable
-    public abstract Integer getDelayMillis();
-
-    /** Max number of retries.
-     * @return max number of retries
-     */
-    @Nullable
-    public abstract Integer getMaxNumberOfRetries();
-
-    /**
-     * @return backoff policy type
-     */
-    public abstract BackOffPolicyType getBackOffPolicyType();
-
-    /** BackOffPolicy types. */
-    public enum BackOffPolicyType {
-      /**
-       * Creates a backoff policy that will not allow any backoff, i.e. an operation will fail after
-       * the first attempt.
-       */
-      NO_BACKOFF,
-      /** Creates an new constant backoff policy with the provided configuration. */
-      CONSTANT,
-      /**
-       * Creates an new exponential backoff policy with the provided configuration. The default is
-       * 50ms delay and 8 max retries.
-       */
-      EXPONENTIAL;
-    }
-
-    /**
-     *
-     * @return BackOffPolicyConfiguration builder object
-     */
-    abstract Builder builder();
-
-    @AutoValue.Builder
-    abstract static class Builder {
-
-      /**
-       * Set the type of backoff policy.
-       *
-       * @param backOffPolicyType type of backoff policy.
-       * @return builder object
-       */
-      abstract Builder setBackOffPolicyType(BackOffPolicyType backOffPolicyType);
-
-      /**
-       * Set the delay between retries or initial delay of the backoff, depending on the type.
-       *
-       * @param delayMillis delay in milliseconds
-       * @return builder object
-       */
-      abstract Builder setDelayMillis(Integer delayMillis);
-
-      /**
-       * Maximum number of retries for the backoff.
-       *
-       * @param maxNumberOfRetries xaximum number of retries for the backoff
-       * @return builder object
-       */
-      abstract Builder setMaxNumberOfRetries(Integer maxNumberOfRetries);
-
-      /**
-       *
-       * @return BackOffPolicyConfiguration object
-       */
-      abstract BackOffPolicyConfiguration build();
-    }
-
-    /**
-     * Creates a new BackOffPolicy configuration for the BulkProcessor.
-     *
-     * @param backOffPolicyType type of backoff policy
-     * @param delayMillis delayMillis in milliseconds for either the exponential or constant
-     *     backoff, can be null
-     * @param maxNumberOfRetries max number of retries for either the exponential or constant
-     *     backoff, can be null
-     * @return Returns a BackOffPolicyConfiguration object for the BulkProcessor.
-     */
-    public static BackOffPolicyConfiguration create(
-        BackOffPolicyType backOffPolicyType, Integer delayMillis, Integer maxNumberOfRetries) {
-      checkArgument(backOffPolicyType != null, "backoff policy type can not be null");
-      if (backOffPolicyType.equals(BackOffPolicyType.CONSTANT)) {
-        checkArgument(
-            !(delayMillis == null && maxNumberOfRetries == null),
-            "Both delayMillis and maxNumberOfRetries are null, both should be a positive "
-                + "integer.");
-      }
-      if (backOffPolicyType.equals(BackOffPolicyType.EXPONENTIAL)) {
-        checkArgument(
-            ((delayMillis == null && maxNumberOfRetries == null)
-                || (delayMillis != null && maxNumberOfRetries != null)),
-            "Only one of delayMillis and maxNumberOfRetries has a value other than null. "
-                + "Both delayMillis and "
-                + "maxNumberOfRetries should be null or both should have a positive integer.");
-      }
-      if (delayMillis != null) {
-        checkArgument(delayMillis >= 0, "Delay should be a positve integer.");
-      }
-      if (maxNumberOfRetries != null) {
-        checkArgument(maxNumberOfRetries >= 0, "MaxNumberOfRetries should be a positve integer.");
-      }
-
-      return new AutoValue_ElasticsearchHlrcIO_BackOffPolicyConfiguration.Builder()
-          .setBackOffPolicyType(backOffPolicyType)
-          .setDelayMillis(delayMillis)
-          .setMaxNumberOfRetries(maxNumberOfRetries)
-          .build();
-    }
-
-    /**
-     * Set the BackOffPolicyType to one of the three types.
-     *
-     * @param backOffPolicyType type of BackOffPolicy
-     * @return BackOffPolicyConfiguration object
-     */
-    public BackOffPolicyConfiguration withBackOffPolicyType(BackOffPolicyType backOffPolicyType) {
-      checkArgument(backOffPolicyType != null, "backoff policy type cannot be null");
-      return builder().setBackOffPolicyType(backOffPolicyType).build();
-    }
-
-    /**
-     * The delay defines how long to wait between retry attempts. Must not be null.
-     *
-     * @param delay Must be &lt;= <code>Integer.MAX_VALUE</code> ms.
-     * @return BackOffPolicyConfiguration object
-     */
-    public BackOffPolicyConfiguration withDelay(Integer delay) {
-      if (delay != null) {
-        checkArgument(delay >= 0, "Delay should be a positve integer.");
-      }
-      return builder().setDelayMillis(delay).build();
-    }
-
-    /**
-     * The maximum number of retries.
-     *
-     * @param maxNumberOfRetries Must be a non-negative number.
-     * @return BackOffPolicyConfiguration object
-     */
-    public BackOffPolicyConfiguration withMaxNumberOfRetries(Integer maxNumberOfRetries) {
-      if (maxNumberOfRetries != null) {
-        checkArgument(maxNumberOfRetries >= 0, "MaxNumberOfRetries should be a positve integer.");
-      }
-      return builder().setMaxNumberOfRetries(maxNumberOfRetries).build();
-    }
-  }
-
   /** A {@link PTransform} reading data from Elasticsearch. */
   @AutoValue
   public abstract static class Read extends PTransform<PBegin, PCollection<String>> {
@@ -716,9 +553,7 @@ public class ElasticsearchHlrcIO {
   public static class BoundedElasticsearchSource extends BoundedSource<String> {
     private static final String AGGREGATION_NAME = "avg_size";
     private static final String SIZE_FIELD = "_size";
-
     private final Read spec;
-    private Version backendVersion;
     private Long estimatedSize = -1L;
 
     @Nullable private final Integer numSlices;
@@ -737,8 +572,6 @@ public class ElasticsearchHlrcIO {
     @Override
     public List<? extends BoundedSource<String>> split(
         long desiredBundleSizeBytes, PipelineOptions options) throws IOException {
-      ConnectionConfiguration connectionConfiguration = spec.getConnectionConfiguration();
-      this.backendVersion = getBackendVersion(connectionConfiguration);
       long indexSize =  estimateIndexSize(spec.getQuery());
       float nbBundlesFloat = (float) indexSize / desiredBundleSizeBytes;
       int nbBundles = (int) Math.ceil(nbBundlesFloat);
@@ -764,7 +597,7 @@ public class ElasticsearchHlrcIO {
     }
 
     @VisibleForTesting
-    private long estimateIndexSize(String query) throws IOException {
+    public long estimateIndexSize(String query) throws IOException {
       if(this.estimatedSize > -1) {
         return this.estimatedSize;
       }
@@ -842,23 +675,6 @@ public class ElasticsearchHlrcIO {
       try (RestClient restClient = connectionConfiguration.createClient().getLowLevelClient()) {
         Request request = new Request("GET", endpoint);
         return parseResponse(restClient.performRequest(request));
-      }
-    }
-
-    private static Version getBackendVersion(ConnectionConfiguration connectionConfiguration) {
-      try (RestHighLevelClient restClient = connectionConfiguration.createClient()) {
-        MainResponse response = restClient.info(RequestOptions.DEFAULT);
-        Version version = response.getVersion();
-        int majorVersion = response.getVersion().major;
-        int minorVersion = response.getVersion().minor;
-        checkArgument((majorVersion == VALID_ES_MAJOR_VERSION && minorVersion >= VALID_ES_MINOR_VERSION),
-            "The Elasticsearch version to connect to is %s "
-                + "This version of the ElasticsearchIO is only compatible with Elasticsearch %s.x",
-            version.toString(), VALID_ES_MAJOR_VERSION, VALID_ES_MINOR_VERSION);
-        return version;
-
-      } catch (IOException e){
-        throw (new IllegalArgumentException("Cannot get Elasticsearch version", e));
       }
     }
   }
@@ -1008,9 +824,6 @@ public class ElasticsearchHlrcIO {
     abstract ConnectionConfiguration getConnectionConfiguration();
 
     @Nullable
-    abstract BackOffPolicyConfiguration getBackOffPolicyConfiguration();
-
-    @Nullable
     abstract Long getFlushInterval();
 
     @Nullable
@@ -1027,16 +840,6 @@ public class ElasticsearchHlrcIO {
     @AutoValue.Builder
     abstract static class Builder {
       abstract Builder setConnectionConfiguration(ConnectionConfiguration connectionConfiguration);
-
-      /**
-       * {@link
-       * BulkProcessor.Builder#setBackoffPolicy(org.elasticsearch.action.bulk.BackoffPolicy)}.
-       *
-       * @param backOffPolicyConfiguration set the backoff policy configuration
-       * @return Builder object
-       */
-      abstract Builder setBackOffPolicyConfiguration(
-          BackOffPolicyConfiguration backOffPolicyConfiguration);
 
       /**
        * {@link BulkProcessor.Builder#setFlushInterval(org.elasticsearch.common.unit.TimeValue)}.
@@ -1084,21 +887,6 @@ public class ElasticsearchHlrcIO {
     public Write withConnectionConfiguration(ConnectionConfiguration connectionConfiguration) {
       checkArgument(connectionConfiguration != null, "connectionConfiguration can not be null");
       return builder().setConnectionConfiguration(connectionConfiguration).build();
-    }
-
-    /**
-     * Provide the BackOffPolicyConfiguration for the BulkProcessor.
-     *
-     * @param backOffPolicyConfiguration the BackOffPolicyConfiguration {@link
-     *     BackOffPolicyConfiguration} object
-     * @return the {@link Write} with backoff policy configuration set
-     */
-    public Write withBackOffPolicyConfiguration(
-        BackOffPolicyConfiguration backOffPolicyConfiguration) {
-      checkArgument(
-          backOffPolicyConfiguration != null, "backOffPolicyConfiguration cannot be " + "null.");
-
-      return builder().setBackOffPolicyConfiguration(backOffPolicyConfiguration).build();
     }
 
     /**
@@ -1170,7 +958,6 @@ public class ElasticsearchHlrcIO {
     @VisibleForTesting
     static class WriteFn extends DoFn<DocWriteRequest, Void> {
 
-      private int backendVersion;
       private final Write spec;
       private transient RestHighLevelClient restHighLevelClient;
       //private BulkProcessor bulkProcessor;
@@ -1185,26 +972,15 @@ public class ElasticsearchHlrcIO {
       }
 
       @Setup
-      public void setup() throws Exception {
+      public void setup() throws IOException {
         ConnectionConfiguration connectionConfiguration = spec.getConnectionConfiguration();
-        //backendVersion = getBackendVersion(connectionConfiguration);
-        restHighLevelClient = connectionConfiguration.createClient();
-        /*
-        BiConsumer<BulkRequest, ActionListener<BulkResponse>> bulkConsumer =
-            (request, bulkListener) -> restHighLevelClient.bulkAsync(request, RequestOptions.DEFAULT,
-                bulkListener);
-        org.elasticsearch.action.bulk.BulkProcessor.Builder builder =
-            org.elasticsearch.action.bulk.BulkProcessor.builder(bulkConsumer, new BulkListener());
-        builder.setBulkActions(spec.getMaxBatchSize());
-        builder.setBulkSize(new ByteSizeValue(spec.getMaxBatchSizeBytes(), ByteSizeUnit.BYTES));
-        // Keep it simple, one thread
-        builder.setConcurrentRequests(0);
-        builder.setFlushInterval(TimeValue.timeValueSeconds(spec.getFlushInterval()));
-        builder.setBackoffPolicy(BackoffPolicy
-            .constantBackoff(TimeValue.timeValueSeconds(spec.getBackOffPolicyConfiguration().getDelayMillis()),
-                spec.getBackOffPolicyConfiguration().getMaxNumberOfRetries()));
-        bulkProcessor = builder.build();
-        */
+        try {
+          assert connectionConfiguration != null;
+          restHighLevelClient = connectionConfiguration.createClient();
+        } catch (IOException e) {
+          throw new IOException("Couldn't connect to Elasticsearch.", e);
+        }
+
         bulkRequest = new BulkRequest();
         if(spec.getTimeout() != null) {
           bulkRequest.timeout(TimeValue.timeValueSeconds(spec.getTimeout()));

@@ -7,7 +7,6 @@ import com.github.dockerjava.api.model.Ulimit;
 import java.time.Duration;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.HttpWaitStrategy;
-import org.testcontainers.utility.Base58;
 
 /**
  * Elasticsearch container for cluster.
@@ -26,7 +25,7 @@ public class ElasticsearchContainer extends
       + ".co/elasticsearch/elasticsearch-oss";
 
   /** Elasticsearch Default version. */
-  protected static final String ELASTICSEARCH_DEFAULT_VERSION = "6.5.1";
+  protected static final String ELASTICSEARCH_DEFAULT_VERSION = "6.5.2";
 
   public ElasticsearchContainer() {
     this(ELASTICSEARCH_DEFAULT_IMAGE + ":" + ELASTICSEARCH_DEFAULT_VERSION);

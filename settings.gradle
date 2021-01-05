@@ -133,8 +133,8 @@ include "beam-sdks-java-io-common"
 project(":beam-sdks-java-io-common").dir = file("sdks/java/io/common")
 include "beam-sdks-java-io-elasticsearch"
 project(":beam-sdks-java-io-elasticsearch").dir = file("sdks/java/io/elasticsearch")
-include "beam-sdks-java-io-elasticsearch-6"
-project(":beam-sdks-java-io-elasticsearch-6").dir = file("sdks/java/io/elasticsearch-6")
+include "beam-sdks-java-io-elasticsearch-hlrc"
+project(":beam-sdks-java-io-elasticsearch-hlrc").dir = file("sdks/java/io/elasticsearch-hlrc")
 include "beam-sdks-java-io-elasticsearch-tests-2"
 project(":beam-sdks-java-io-elasticsearch-tests-2").dir = file("sdks/java/io/elasticsearch-tests/elasticsearch-tests-2")
 include "beam-sdks-java-io-elasticsearch-tests-5"

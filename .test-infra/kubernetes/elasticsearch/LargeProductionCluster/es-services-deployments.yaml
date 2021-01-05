@@ -33,7 +33,7 @@ spec:
     protocol: TCP
 ---
 # The Kubernetes deployment script for Elasticsearch master nodes.
-apiVersion: extensions/v1beta1
+apiVersion:  apps/v1
 kind: Deployment
 metadata:
   name: es-master
@@ -106,9 +106,13 @@ spec:
           - emptyDir:
               medium: ""
             name: "storage"
+  selector:
+    matchLabels:
+      component: elasticsearch
+      role: master
 ---
 # Kubernetes deployment script for Elasticsearch client nodes (aka load balancing proxies).
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: es-client
@@ -185,9 +189,13 @@ spec:
           - emptyDir:
               medium: ""
             name: "storage"
+  selector:
+    matchLabels:
+      component: elasticsearch
+      role: client
 ---
 # Kubernetes deployment script for Elasticsearch data nodes which store and index data.
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: es-data
@@ -256,3 +264,7 @@ spec:
           - emptyDir:
               medium: ""
             name: "storage"
+  selector:
+    matchLabels:
+      component: elasticsearch
+      role: data
